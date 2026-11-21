@@ -1,4 +1,3 @@
-
 import pygame
 
 import settings
@@ -18,6 +17,14 @@ class Player:
 
         self.sounds = sounds
         self.shield_active = False
+        self.shield_sound_played = False
+
+        # Control de sonidos de disparo
+        self.shoot_sounds_played = []
+
+        # Control de sonidos de recoger suministro y muerte
+        self.pickup_sound_played = False
+        self.dead_sound_played = False
 
         # Animaciones de ambas armas
         self.anims = {
@@ -25,9 +32,33 @@ class Player:
             "shotgun": self._build(settings.SOLDIER_SHOTGUN_SHEET),
         }
 
+        # Animaciones adicionales
+        self.extra_anims = {
+            "dead": self._build_extra(
+                settings.SOLDIER_DEAD_SHEET,
+                settings.SOLDIER_DEAD_COLS,
+                settings.SOLDIER_DEAD_ROWS,
+                "dead"
+            ),
+
+            "pickup": self._build_extra(
+                settings.SOLDIER_PICKUP_SHEET,
+                settings.SOLDIER_PICKUP_COLS,
+                settings.SOLDIER_PICKUP_ROWS,
+                "pickup"
+            )
+        }
+
         self.anim = self.anims[self.weapon]["idle"]
 
-        self.action_states = ("shoot", "shield", "reload", "remove_shield")
+        self.action_states = (
+            "shoot",
+            "shield",
+            "reload",
+            "remove_shield",
+            "dead",
+            "pickup"
+        )
 
     # --------------------------------
     # CONSTRUIR ANIMACIONES
@@ -83,6 +114,52 @@ class Player:
         }
 
     # --------------------------------
+    # CONSTRUIR ANIMACIONES ADICIONALES
+    # --------------------------------
+
+    @staticmethod
+    def _build_extra(sheet_path, cols, rows, animation_name):
+
+        sheet = SpriteSheet(
+            sheet_path,
+            settings.SOLDIER_FRAME_SIZE,
+            cols,
+            rows
+        )
+
+        return Animation(
+            sheet.get_row(0, settings.SOLDIER_SCALE),
+            settings.ANIMATION_FPS[animation_name],
+            loop=False
+        )
+
+    # --------------------------------
+    # REPRODUCIR ANIMACIONES DE PRUEBA
+    # --------------------------------
+
+    def play_test_animation(self, animation_name):
+
+        if animation_name not in self.extra_anims:
+            return
+
+        # No interrumpir otra acción
+        if self.state in self.action_states:
+            return
+
+        self.sounds.stop_footsteps()
+
+        self.state = animation_name
+        self.anim = self.extra_anims[animation_name]
+        self.anim.reset()
+
+        # Preparar los sonidos de la animación
+        if animation_name == "pickup":
+            self.pickup_sound_played = False
+
+        elif animation_name == "dead":
+            self.dead_sound_played = False
+
+    # --------------------------------
     # CAMBIAR ARMA
     # --------------------------------
 
@@ -125,10 +202,13 @@ class Player:
         self.anim = self.anims[self.weapon][action]
         self.anim.reset()
 
-        # Sonido de disparo
+        # Preparar sonidos de la acción
         if action == "shoot":
-            self.sounds.play_shoot_sound(self.weapon)
+
+            self.shoot_sounds_played = []
+
         elif action == "reload":
+
             self.sounds.play_reload_sound(self.weapon)
 
     # --------------------------------
@@ -155,18 +235,24 @@ class Player:
             return
 
         # No activar durante otras acciones
-        if self.state in ("shoot", "reload", "remove_shield"):
+        if self.state in (
+            "shoot",
+            "reload",
+            "remove_shield",
+            "dead",
+            "pickup"
+        ):
             return
 
         self.sounds.stop_footsteps()
 
         self.shield_active = True
+        self.shield_sound_played = False
+
         self.state = "shield"
 
         self.anim = self.anims[self.weapon]["shield"]
         self.anim.reset()
-
-        self.sounds.play_shield_sound()
 
     # --------------------------------
     # COLISIONES
@@ -191,25 +277,70 @@ class Player:
 
     def update(self, dt, keys, level):
 
-        # --------------------------------
         # ESCUDO ACTIVO
-        # --------------------------------
-
         if self.shield_active:
 
-            # Reproducir una sola vez y conservar
-            # el último fotograma mientras esté activo
             self.anim.update(dt)
+
+            # Reproducir sonido en el fotograma configurado
+            if (
+                not self.shield_sound_played
+                and self.anim.index >= settings.SHIELD_SOUND_FRAME - 1
+            ):
+
+                self.sounds.play_shield_sound()
+                self.shield_sound_played = True
 
             return
 
         # --------------------------------
-        # OTRAS ACCIONES Y QUITAR ESCUDO
+        # OTRAS ACCIONES Y ANIMACIONES
         # --------------------------------
 
-        if self.state in ("shoot", "reload", "remove_shield"):
+        if self.state in (
+            "shoot",
+            "reload",
+            "remove_shield",
+            "dead",
+            "pickup"
+        ):
 
             self.anim.update(dt)
+
+            # Sincronizar los dos disparos con la animación
+            if self.state == "shoot":
+
+                for i, frame in enumerate(settings.SHOOT_SOUND_FRAMES):
+
+                    if (
+                        self.anim.index >= frame - 1
+                        and i not in self.shoot_sounds_played
+                    ):
+
+                        self.sounds.play_shoot_sound(self.weapon)
+                        self.shoot_sounds_played.append(i)
+
+            # Sonido de recoger suministro en su fotograma
+            elif self.state == "pickup":
+
+                if (
+                    not self.pickup_sound_played
+                    and self.anim.index >= settings.PICKUP_SOUND_FRAME - 1
+                ):
+
+                    self.sounds.play_pickup_sound()
+                    self.pickup_sound_played = True
+
+            # Sonido de muerte en su fotograma
+            elif self.state == "dead":
+
+                if (
+                    not self.dead_sound_played
+                    and self.anim.index >= settings.DEAD_SOUND_FRAME - 1
+                ):
+
+                    self.sounds.play_dead_sound()
+                    self.dead_sound_played = True
 
             # Cuando termina la animación,
             # regresar al estado de reposo

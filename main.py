@@ -202,6 +202,11 @@ def main():
                         
                     elif event.key == pygame.K_F2:
                         debug = not debug
+                    elif event.key == pygame.K_F3:
+                        player.play_test_animation("dead")
+
+                    elif event.key == pygame.K_F4:
+                        player.play_test_animation("pickup")
 
         # --------------------------------
         # ACTUALIZAR JUEGO

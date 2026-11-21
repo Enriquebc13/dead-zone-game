@@ -11,9 +11,11 @@ SCREEN_HEIGHT = 720
 RESIZABLE = True
 FPS = 60
 TITLE = "Dead Zone"
-
+# Recursos de soldado
 SOLDIER_RIFLE_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_spritesheet.png"
 SOLDIER_SHOTGUN_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_spritesheet_escopeta.png"
+SOLDIER_DEAD_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "dead_player.png"
+SOLDIER_PICKUP_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "recoger_suministro.png"
 
 MAPS_DIR = BASE_DIR / "maps"
 LEVELS = [MAPS_DIR / f"mapa_{n}" / f"mapa_{n}.tmx" for n in range(1, 6)]
@@ -55,12 +57,27 @@ SOLDIER_RELOAD_RIFLE_SOUND = (
 SOLDIER_RELOAD_SHOTGUN_SOUND = (
     BASE_DIR / "assets" / "sounds" / "soldier" / "recarga_escopeta.mp3"
 )
+SOLDIER_PICKUP_SOUND = (
+    BASE_DIR / "assets" / "sounds" / "soldier" / "recolectar.mp3"
+)
+
+SOLDIER_DEAD_SOUND = (
+    BASE_DIR / "assets" / "sounds" / "soldier" / "game_over.mp3"
+)
+
+
 # Hoja del soldado: 2400x880 -> 10 columnas x 4 filas -> celdas de 240x220
 SOLDIER_FRAME_SIZE = (240, 220)
 SOLDIER_COLS = 10
 SOLDIER_ROWS = 5
 SOLDIER_PIVOT = (100, 205)      # los pies dentro de la celda
 SOLDIER_SCALE = 0.55            # tiles de 32 px: 0.35 = soldado de ~2 tiles de alto
+
+SOLDIER_DEAD_COLS = 10
+SOLDIER_DEAD_ROWS = 1
+
+SOLDIER_PICKUP_COLS = 10
+SOLDIER_PICKUP_ROWS = 1
 
 ROW_WALK = 0
 ROW_RUN = 1
@@ -74,8 +91,16 @@ ANIMATION_FPS = {
     "run": 20,
     "shield": 12,
     "shoot": 15,
-    "reload": 10
+    "reload": 10,
+    "dead": 10,
+    "pickup": 12
 }
+
+# Fotograma en el que se reproduce el sonido del escudo
+SHIELD_SOUND_FRAME = 7 
+SHOOT_SOUND_FRAMES = [2, 7]
+PICKUP_SOUND_FRAME = 5
+DEAD_SOUND_FRAME = 0
 
 WALK_SPEED = 110                # píxeles por segundo
 RUN_SPEED = 190

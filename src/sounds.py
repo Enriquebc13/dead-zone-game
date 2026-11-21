@@ -1,4 +1,3 @@
-
 import pygame
 import settings
 
@@ -17,8 +16,8 @@ class SoundManager:
         self.select_level = pygame.mixer.Sound(
             str(settings.MENU_SELECT_SOUND)
         )
-        
-         # Sonidos del soldado
+
+        # Sonidos del soldado
         self.soldier_sounds = {
             "shield": pygame.mixer.Sound(
                 str(settings.SOLDIER_SHIELD_SOUND)
@@ -41,25 +40,31 @@ class SoundManager:
             "reload_shotgun": pygame.mixer.Sound(
                 str(settings.SOLDIER_RELOAD_SHOTGUN_SOUND)
             ),
+            "pickup": pygame.mixer.Sound(
+                str(settings.SOLDIER_PICKUP_SOUND)
+            ),
+            "dead": pygame.mixer.Sound(
+                str(settings.SOLDIER_DEAD_SOUND)
+            ),
         }
-
 
         # Volúmenes independientes
         self.menu_volume = 0.5
-        self.game_music_volume = 0.5
-        self.effects_volume = 0.20
+        self.game_music_volume = 0.20
+        self.effects_volume = 0.5
         self.ui_volume = 0.20
 
         # Identificar qué tipo de música está reproduciéndose
         self.current_music_type = None
-        
-         # Canal de pasos
+
+        # Canal de pasos
         self.footsteps_channel = None
         self.current_footstep_type = None
-# Sonido del menú independiente
+
+        # Sonido del menú independiente
         self.select_level.set_volume(self.ui_volume)
 
-# Volumen inicial de efectos del juego
+        # Volumen inicial de efectos del juego
         for sound in self.soldier_sounds.values():
             sound.set_volume(self.effects_volume)
 
@@ -83,13 +88,14 @@ class SoundManager:
         self.effects_volume = max(0.0, min(1.0, volume))
 
         for sound in self.soldier_sounds.values():
-         sound.set_volume(self.effects_volume)
-            
-    def play_reload_sound(self, weapon):
-            sound_name = f"reload_{weapon}"
+            sound.set_volume(self.effects_volume)
 
-            if sound_name in self.soldier_sounds:
-                self.soldier_sounds[sound_name].play()
+    def play_reload_sound(self, weapon):
+        sound_name = f"reload_{weapon}"
+
+        if sound_name in self.soldier_sounds:
+            self.soldier_sounds[sound_name].play()
+
     # --------------------------------
     # REPRODUCCIÓN DE MÚSICA
     # --------------------------------
@@ -101,18 +107,17 @@ class SoundManager:
 
         self.current_music_type = "menu"
 
- 
     def play_level_music(self, level_number):
         if level_number < 1 or level_number > 5:
             return
 
         music_path = (
             settings.BASE_DIR
-        / "assets"
-        / "sounds"
-        / "music"
-        / f"nivel_{level_number}.mp3"
-    )
+            / "assets"
+            / "sounds"
+            / "music"
+            / f"nivel_{level_number}.mp3"
+        )
 
         pygame.mixer.music.load(str(music_path))
         pygame.mixer.music.set_volume(self.game_music_volume)
@@ -120,22 +125,33 @@ class SoundManager:
 
         self.current_music_type = "game"
 
-
     # --------------------------------
     # EFECTOS DE SONIDO
     # --------------------------------
 
     def play_select_sound(self):
         self.select_level.play()
-        
+
     def play_shield_sound(self):
         self.soldier_sounds["shield"].play()
 
     def play_shoot_sound(self, weapon):
         if weapon in ("rifle", "shotgun"):
             self.soldier_sounds[weapon].play()
-            
-     # --------------------------------
+
+    def play_pickup_sound(self):
+        self.soldier_sounds["pickup"].play()
+
+    def play_dead_sound(self):
+        # Cortar los pasos para que no suenen mientras cae
+        self.stop_footsteps()
+
+        # Opcional: bajar la música del nivel al morir
+        # pygame.mixer.music.fadeout(800)
+
+        self.soldier_sounds["dead"].play()
+
+    # --------------------------------
     # PASOS DEL SOLDADO
     # --------------------------------
 
