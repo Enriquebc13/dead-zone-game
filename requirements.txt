@@ -1,0 +1,15 @@
+
+# DEAD ZONE - Dependencias del proyecto
+#
+# Este archivo contiene las librerías necesarias para ejecutar el juego.
+#
+# INSTRUCCIONES DE INSTALACIÓN:
+# 1. Activar el entorno virtual del proyecto (si se utiliza).
+# 2. Ejecutar el siguiente comando desde la carpeta principal:
+#
+#    pip install -r requirements.txt
+#
+# DEPENDENCIAS:
+
+pygame
+pytmx
