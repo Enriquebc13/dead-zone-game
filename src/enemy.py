@@ -268,7 +268,8 @@ class Enemy:
 
     def _try_hit(self, player, dist, sounds, tolerance):
         if player.alive and dist <= self.cfg["attack_range"] * tolerance:
-            player.take_damage(self.cfg["damage"])
+            # source = de dónde viene el golpe (el escudo solo cubre el frente)
+            player.take_damage(self.cfg["damage"], source=self.pos)
             if sounds:
                 sounds.play_zombie("attack")
 

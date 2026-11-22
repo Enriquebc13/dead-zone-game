@@ -1,4 +1,3 @@
-
 import pygame
 
 
@@ -54,7 +53,10 @@ class VictoryScreen:
         label = self.font.render(text, True, text_color)
         canvas.blit(label, label.get_rect(center=rect.center))
 
-    def draw(self, canvas, level, player, enemies, elapsed_time, mouse_pos):
+    def draw(
+        self, canvas, level, player, enemies, elapsed_time, mouse_pos,
+        has_next=False
+    ):
         """Dibuja el tablero con los resultados de la partida."""
 
         width = canvas.get_width()
@@ -63,10 +65,6 @@ class VictoryScreen:
         cx = width // 2
         cy = height // 2
 
-
-        # Convertir el mouse a las coordenadas internas del canvas
-        # El escalado se realiza en main.py; aquí solo usamos
-        # las coordenadas que nos proporciona.
         panel = pygame.Rect(
             cx - 270, cy - 245, 540, 520
         )
@@ -158,9 +156,10 @@ class VictoryScreen:
         self._draw_button(
             canvas,
             self.next_button,
-            "SIGUIENTE NIVEL - PROXIMAMENTE",
+            "SIGUIENTE NIVEL" if has_next
+            else "SIGUIENTE NIVEL - PROXIMAMENTE",
             mouse_pos,
-            enabled=False
+            enabled=has_next
         )
 
         self._draw_button(
@@ -170,18 +169,28 @@ class VictoryScreen:
             mouse_pos
         )
 
-    def handle_event(self, event, window_size, canvas_size):
+    def handle_event(self, event, window_size, canvas_size, has_next=False):
         """
         Procesa los eventos de la pantalla.
 
         Retorna:
+        - 'next': pasar al siguiente nivel (solo si has_next).
         - 'menu': regresar al menú principal.
         - None: permanecer en la pantalla.
         """
 
         if event.type == pygame.KEYDOWN:
+
             if event.key == pygame.K_ESCAPE:
                 return "menu"
+
+            # ENTER / ESPACIO = siguiente nivel
+            if has_next and event.key in (
+                pygame.K_RETURN,
+                pygame.K_KP_ENTER,
+                pygame.K_SPACE,
+            ):
+                return "next"
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             window_width, window_height = window_size
@@ -195,8 +204,7 @@ class VictoryScreen:
             if self.menu_button.collidepoint(mouse_pos):
                 return "menu"
 
-            # El siguiente nivel todavía no está implementado.
-            if self.next_button.collidepoint(mouse_pos):
-                return None
+            if has_next and self.next_button.collidepoint(mouse_pos):
+                return "next"
 
         return None

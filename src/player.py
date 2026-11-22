@@ -39,6 +39,10 @@ class Player:
         self.dead_done = False
         self.invuln = 0.0
 
+        # Enemigos del nivel (los asigna main.py cada cuadro); sirve para
+        # saber de qué lado viene un golpe cuando el escudo está activo
+        self.threats = []
+
         self.aim = pygame.Vector2(pos) + (100, 0)
         self.pending_bullets = []
         self.pending_effects = []
@@ -500,6 +504,28 @@ class Player:
         elif "axe" in self.unlocked:
             self.play_action("axe")
 
+    POSE_ANGLES = {"": 0, "_up": 45, "_down": -45}
+
+    def _limit_to_pose(self, direction):
+        """Limita la dirección del tiro a la pose que se ve en pantalla."""
+
+        pose = self.POSE_ANGLES[self.fire_dir]
+        tol = getattr(settings, "SHOT_POSE_TOLERANCE", 10)
+
+        angle = math.degrees(
+            math.atan2(-direction.y, direction.x * self.facing)
+        )
+
+        diff = (angle - pose + 180) % 360 - 180
+        diff = max(-tol, min(tol, diff))
+
+        rad = math.radians(pose + diff)
+
+        return pygame.Vector2(
+            self.facing * math.cos(rad),
+            -math.sin(rad)
+        )
+
     def _fire(self):
 
         # Cada bala (o cartucho de escopeta) gasta munición del cargador
@@ -516,7 +542,7 @@ class Player:
         if direction.length() < 8:
             direction = pygame.Vector2(self.facing, 0)
 
-        direction = direction.normalize()
+        direction = self._limit_to_pose(direction)
 
         lead = pygame.Vector2(self.pos.x, origin.y)
 
@@ -696,14 +722,47 @@ class Player:
     # DAÑO Y MUERTE
     # --------------------------------
 
-    def take_damage(self, amount):
+    def _nearest_threat(self):
+        """Posición del enemigo vivo más cercano (el que está golpeando)."""
+
+        best = None
+        best_dist = None
+
+        for enemy in self.threats:
+
+            if not enemy.alive:
+                continue
+
+            dist = self.pos.distance_squared_to(enemy.pos)
+
+            if best_dist is None or dist < best_dist:
+                best = enemy.pos
+                best_dist = dist
+
+        return best
+
+    def take_damage(self, amount, source=None):
+        """source = posición de quien golpea (opcional)."""
 
         if not self.alive or self.invuln > 0:
             return
 
         if self.shield_active:
 
-            amount *= settings.SHIELD_DAMAGE_MULT
+            if source is None:
+                source = self._nearest_threat()
+
+            # El escudo solo cubre el frente
+            in_front = (
+                source is None
+                or (source.x - self.pos.x) * self.facing >= -10
+            )
+
+            amount *= (
+                getattr(settings, "SHIELD_FRONT_MULT", 0.0)
+                if in_front
+                else getattr(settings, "SHIELD_BACK_MULT", 1.0)
+            )
 
             self.pending_effects.append((
                 "shield",
@@ -712,6 +771,11 @@ class Player:
                     self.pos.y - 45
                 )
             ))
+
+            # Golpe bloqueado por completo: sin daño
+            if amount <= 0:
+                self.invuln = 0.25
+                return
 
         else:
 
@@ -759,6 +823,71 @@ class Player:
         )
 
         return rect
+
+    # --------------------------------
+    # MOVIMIENTO (compartido por caminar y disparar caminando)
+    # --------------------------------
+
+    def _read_movement(self, keys):
+        """Lee WASD. Devuelve (dirección, corriendo, moviéndose)."""
+
+        direction = pygame.Vector2(
+            keys[pygame.K_d] - keys[pygame.K_a],
+            keys[pygame.K_s] - keys[pygame.K_w]
+        )
+
+        # Moverse hacia atrás (contra donde mira) solo permite caminar
+        backwards = (
+            direction.x != 0
+            and (direction.x > 0) != (self.facing > 0)
+        )
+
+        run = bool(
+            (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
+            and not backwards
+        )
+
+        moving = direction.length_squared() > 0
+
+        return direction, run, moving
+
+    def _move(self, direction, speed, dt, level):
+
+        step = direction.normalize() * speed * dt
+
+        # Ejes separados para evitar atravesar paredes
+        for axis in ("x", "y"):
+
+            candidate = self.pos.copy()
+
+            setattr(
+                candidate,
+                axis,
+                getattr(candidate, axis) + getattr(step, axis)
+            )
+
+            candidate.x = max(0, min(level.width, candidate.x))
+            candidate.y = max(0, min(level.height, candidate.y))
+
+            if not level.collides(self._foot_rect(candidate)):
+                self.pos = candidate
+
+    def _shoot_walk(self, dt, keys, level):
+        """Permite caminar (más lento) mientras dura la animación de disparo."""
+
+        direction, run, moving = self._read_movement(keys)
+
+        if not moving:
+            self.sounds.stop_footsteps()
+            return
+
+        self.sounds.play_footsteps("walk")
+
+        speed = settings.WALK_SPEED * getattr(
+            settings, "SHOOT_MOVE_MULT", 0.6
+        )
+
+        self._move(direction, speed, dt, level)
 
     # --------------------------------
     # ACTUALIZAR JUGADOR
@@ -848,6 +977,9 @@ class Player:
                         self._fire()
                         self.fire_frames_done.append(i)
 
+                # Caminar mientras se dispara
+                self._shoot_walk(dt, keys, level)
+
             # Sonido de recoger suministro
             elif self.state == "pickup":
 
@@ -906,23 +1038,7 @@ class Player:
         # MOVIMIENTO
         # --------------------------------
 
-        direction = pygame.Vector2(
-            keys[pygame.K_d] - keys[pygame.K_a],
-            keys[pygame.K_s] - keys[pygame.K_w]
-        )
-
-        # Moverse hacia atrás (contra donde mira) solo permite caminar
-        backwards = (
-            direction.x != 0
-            and (direction.x > 0) != (self.facing > 0)
-        )
-
-        run = (
-            (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
-            and not backwards
-        )
-
-        moving = direction.length_squared() > 0
+        direction, run, moving = self._read_movement(keys)
         axe = self.equipped == "axe"
 
         new_state = (
@@ -981,31 +1097,7 @@ class Player:
                 if run else settings.WALK_SPEED
             )
 
-            step = direction.normalize() * speed * dt
-
-            # Ejes separados para evitar atravesar paredes
-            for axis in ("x", "y"):
-
-                candidate = self.pos.copy()
-
-                setattr(
-                    candidate,
-                    axis,
-                    getattr(candidate, axis) + getattr(step, axis)
-                )
-
-                candidate.x = max(
-                    0,
-                    min(level.width, candidate.x)
-                )
-
-                candidate.y = max(
-                    0,
-                    min(level.height, candidate.y)
-                )
-
-                if not level.collides(self._foot_rect(candidate)):
-                    self.pos = candidate
+            self._move(direction, speed, dt, level)
 
         self.anim.update(dt)
 

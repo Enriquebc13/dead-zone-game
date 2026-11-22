@@ -112,6 +112,9 @@ ROW_FIRE_DOWN = 6               # disparo apuntando -45 grados
 # Cuadro de la fila de disparo usado como pose de apuntado en reposo
 # (2 = arma levantada; 0 = arma baja)
 IDLE_AIM_FRAME = 2
+# Máxima desviación (grados) entre hacia dónde apunta el arma en el sprite
+# y hacia dónde sale la bala. 0 = la bala sigue exactamente la pose.
+SHOT_POSE_TOLERANCE = 10
 
 ANIMATION_FPS = {
     "idle": 1,
@@ -240,11 +243,12 @@ ENEMY_TYPES = {
 # Tipo de enemigo por cada punto "zombie" del mapa (en el orden en que
 # aparecen en Tiled).  Si hay menos tipos que puntos se repite el último.
 LEVEL_ENEMY_TYPES = {
-    1: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_normal",
+    1: ["zombie_normal", "zombie_normal", "zombie_normal",
+        "zombie_corredor", "zombie_normal", "zombie_normal"],
+    2: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_normal",
         "zombie_corredor", "zombie_normal", "zombie_normal", "perro_infectado",
         "zombie_tanque", "zombie_normal", "zombie_corredor", "zombie_normal"],
 }
-
 
 # ==============================================================
 # ARMAS, MUNICIÓN Y SUMINISTROS
@@ -291,3 +295,6 @@ AXE_REACH = 70                   # alcance frente al soldado (px)
 AXE_DEPTH = 34                   # tolerancia arriba/abajo (px)
 AXE_HIT_FRAME = AXE_SOUND_FRAME - 1
 AXE_KNOCKBACK = 22               # empujón al enemigo (px)
+
+SHOOT_MOVE_MULT = 0.6      # velocidad al disparar caminando (1.0 = normal)
+SHOT_POSE_TOLERANCE = 10   # desviación máxima de la bala respecto a la pose

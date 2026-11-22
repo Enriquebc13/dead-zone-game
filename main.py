@@ -9,6 +9,7 @@ from src.effects import Effect
 from src.menu import Menu
 from src.settings_menu import SettingsMenu
 from src.victory_screen import VictoryScreen
+from src.pause_menu import PauseMenu
 
 
 def start_level(index, sounds):
@@ -234,6 +235,66 @@ def draw_hud(canvas, font, big_font, level, player, enemies):
         )
 
 
+def draw_scene(
+    canvas, font, big_font, level, player, enemies,
+    bullets, effects, floating, camera
+):
+    """Dibuja el estado actual del nivel sin actualizarlo (para la pausa)."""
+
+    canvas.fill((15, 15, 15))
+
+    level.draw(canvas, camera)
+
+    for enemy in enemies:
+        if not enemy.alive:
+            enemy.draw(canvas, camera)
+
+    actors = [e for e in enemies if e.alive] + [player]
+
+    for actor in sorted(actors, key=lambda a: a.pos.y):
+        actor.draw(canvas, camera)
+
+    for bullet in bullets:
+        bullet.draw(canvas, camera)
+
+    for effect in effects:
+        effect.draw(canvas, camera)
+
+    for text, pos, age in floating:
+
+        label = font.render(text, True, (255, 255, 160))
+
+        canvas.blit(
+            label,
+            label.get_rect(
+                center=(
+                    round(pos.x - camera.x),
+                    round(pos.y - camera.y)
+                )
+            )
+        )
+
+    draw_hud(canvas, font, big_font, level, player, enemies)
+
+
+def has_next_level(index):
+    """True si existe el archivo del nivel siguiente (index = nivel actual)."""
+
+    nxt = index + 1
+
+    return nxt < len(settings.LEVELS) and settings.LEVELS[nxt].exists()
+
+
+def play_level_music_safe(sounds, level_number):
+    """Música del nivel; si no existe su archivo usa la del nivel 1."""
+
+    try:
+        sounds.play_level_music(level_number)
+
+    except (pygame.error, OSError):
+        sounds.play_level_music(1)
+
+
 def return_to_menu(menu, state):
     """Limpia la partida y regresa al menú principal."""
 
@@ -285,6 +346,7 @@ def main():
     menu = Menu()
     settings_menu = SettingsMenu(menu.sounds)
     victory_screen = VictoryScreen()
+    pause_menu = PauseMenu()
 
     # --------------------------------
     # ESTADOS DEL JUEGO
@@ -312,6 +374,14 @@ def main():
 
     debug = False
     fullscreen = False
+
+    # Evita disparar con el clic que se usó en el menú para entrar al nivel
+    fire_lock = False
+
+    # Pausa
+    paused = False
+    in_pause_settings = False
+    pause_started = 0
 
     while True:
 
@@ -440,6 +510,8 @@ def main():
 
                         level_start_time = pygame.time.get_ticks()
 
+                        fire_lock = True
+
                         playing = True
 
                         menu.sounds.play_level_music(result + 1)
@@ -463,10 +535,41 @@ def main():
                         (
                             settings.SCREEN_WIDTH,
                             settings.SCREEN_HEIGHT
-                        )
+                        ),
+                        has_next_level(level_index)
                     )
 
-                    if result == "menu":
+                    # Pasar al siguiente nivel
+                    if result == "next":
+
+                        level_index += 1
+
+                        menu.sounds.stop_horde()
+                        menu.sounds.stop_footsteps()
+
+                        level, player, enemies = start_level(
+                            level_index,
+                            menu.sounds
+                        )
+
+                        bullets = []
+                        effects = []
+                        floating = []
+
+                        camera = pygame.Vector2()
+
+                        victory = False
+                        victory_elapsed = 0
+
+                        level_start_time = pygame.time.get_ticks()
+
+                        # El clic del botón no debe disparar
+                        fire_lock = True
+
+                        play_level_music_safe(menu.sounds, level_index + 1)
+                        menu.sounds.play_horde()
+
+                    elif result == "menu":
 
                         state = {
                             "playing": playing,
@@ -493,6 +596,147 @@ def main():
                         floating = state["floating"]
 
                 # --------------------------------
+                # MENU DE PAUSA
+                # --------------------------------
+
+                elif paused:
+
+                    # Configuración dentro de la pausa
+                    if in_pause_settings:
+
+                        pause_event = event
+
+                        if event.type in (
+                            pygame.MOUSEMOTION,
+                            pygame.MOUSEBUTTONDOWN
+                        ):
+
+                            pause_event = pygame.event.Event(
+                                event.type,
+                                {
+                                    **event.dict,
+                                    "pos": (
+                                        int(
+                                            event.pos[0]
+                                            * settings.SCREEN_WIDTH
+                                            / window_width
+                                        ),
+                                        int(
+                                            event.pos[1]
+                                            * settings.SCREEN_HEIGHT
+                                            / window_height
+                                        )
+                                    )
+                                }
+                            )
+
+                        if settings_menu.handle_event(pause_event) == "back":
+                            in_pause_settings = False
+
+                    else:
+
+                        action = pause_menu.handle_event(
+                            event,
+                            screen.get_size(),
+                            (
+                                settings.SCREEN_WIDTH,
+                                settings.SCREEN_HEIGHT
+                            )
+                        )
+
+                        # Continuar
+                        if action == "resume":
+
+                            paused = False
+
+                            # El tiempo en pausa no cuenta en la partida
+                            level_start_time += (
+                                pygame.time.get_ticks() - pause_started
+                            )
+
+                            # El clic de "Continuar" no debe disparar
+                            fire_lock = True
+
+                            pygame.mixer.unpause()
+                            pygame.mixer.music.unpause()
+
+                        # Reiniciar nivel
+                        elif action == "restart":
+
+                            pygame.mixer.unpause()
+                            pygame.mixer.music.unpause()
+
+                            menu.sounds.stop_footsteps()
+                            menu.sounds.stop_horde()
+
+                            level, player, enemies = start_level(
+                                level_index,
+                                menu.sounds
+                            )
+
+                            bullets = []
+                            effects = []
+                            floating = []
+
+                            camera = pygame.Vector2()
+
+                            victory = False
+                            victory_elapsed = 0
+
+                            level_start_time = pygame.time.get_ticks()
+
+                            fire_lock = True
+                            paused = False
+                            in_pause_settings = False
+
+                            menu.sounds.play_level_music(level_index + 1)
+                            menu.sounds.play_horde()
+
+                        # Configuración (volumen, etc.)
+                        elif action == "settings":
+
+                            in_pause_settings = True
+
+                        # Volver al menú principal
+                        elif action == "menu":
+
+                            pygame.mixer.unpause()
+                            pygame.mixer.music.unpause()
+
+                            paused = False
+                            in_pause_settings = False
+
+                            state = {
+                                "playing": playing,
+                                "victory": victory,
+                                "level": level,
+                                "player": player,
+                                "enemies": enemies,
+                                "bullets": bullets,
+                                "effects": effects,
+                                "floating": floating
+                            }
+
+                            return_to_menu(menu, state)
+
+                            playing = state["playing"]
+                            victory = state["victory"]
+
+                            level = state["level"]
+                            player = state["player"]
+                            enemies = state["enemies"]
+
+                            bullets = state["bullets"]
+                            effects = state["effects"]
+                            floating = state["floating"]
+
+                        # Salir del juego
+                        elif action == "quit":
+
+                            pygame.quit()
+                            sys.exit()
+
+                # --------------------------------
                 # CONTROLES NORMALES DEL JUGADOR
                 # --------------------------------
 
@@ -500,7 +744,22 @@ def main():
 
                     if event.type == pygame.KEYDOWN:
 
-                        if event.key == pygame.K_ESCAPE:
+                        # ESC / P = pausa (en Game Over, ESC vuelve al menú)
+                        if (
+                            event.key in (pygame.K_ESCAPE, pygame.K_p)
+                            and not player.dead_done
+                        ):
+
+                            paused = True
+                            in_pause_settings = False
+                            pause_started = pygame.time.get_ticks()
+
+                            pause_menu.reset()
+
+                            pygame.mixer.pause()
+                            pygame.mixer.music.pause()
+
+                        elif event.key == pygame.K_ESCAPE:
 
                             # Volver al menú
                             state = {
@@ -562,6 +821,8 @@ def main():
 
                                 level_start_time = pygame.time.get_ticks()
 
+                                fire_lock = True
+
                                 camera = pygame.Vector2()
 
                                 menu.sounds.play_horde()
@@ -593,9 +854,12 @@ def main():
         # ACTUALIZAR Y DIBUJAR JUEGO
         # --------------------------------
 
-        if playing and not victory:
+        if playing and not victory and not paused:
 
             keys = pygame.key.get_pressed()
+
+            # El jugador necesita saber quiénes lo atacan (escudo)
+            player.threats = enemies
 
             # --------------------------------
             # APUNTAR
@@ -614,8 +878,15 @@ def main():
             # ATACAR
             # --------------------------------
 
+            # Mouse USB o touchpad: ambos llegan como botón izquierdo
+            mouse_down = pygame.mouse.get_pressed()[0]
+
+            # Hasta soltar el clic del menú no se dispara
+            if fire_lock and not mouse_down:
+                fire_lock = False
+
             if (
-                pygame.mouse.get_pressed()[0]
+                (mouse_down and not fire_lock)
                 or keys[pygame.K_j]
             ):
                 player.attack()
@@ -992,8 +1263,31 @@ def main():
                 player,
                 enemies,
                 victory_elapsed,
-                scaled_mouse
+                scaled_mouse,
+                has_next_level(level_index)
             )
+
+        # --------------------------------
+        # PAUSA
+        # --------------------------------
+
+        elif playing and paused:
+
+            draw_scene(
+                canvas, font, big_font, level, player, enemies,
+                bullets, effects, floating, camera
+            )
+
+            pause_menu.draw(
+                canvas,
+                level,
+                player,
+                enemies,
+                (pause_started - level_start_time) / 1000
+            )
+
+            if in_pause_settings:
+                settings_menu.draw(canvas)
 
         # --------------------------------
         # MENU PRINCIPAL
