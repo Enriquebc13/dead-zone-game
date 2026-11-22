@@ -248,6 +248,10 @@ LEVEL_ENEMY_TYPES = {
     2: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_normal",
         "zombie_corredor", "zombie_normal", "zombie_normal", "perro_infectado",
         "zombie_tanque", "zombie_normal", "zombie_corredor", "zombie_normal"],
+    3: ["zombie_normal", "zombie_corredor", "perro_infectado", "zombie_normal",
+        "zombie_corredor", "zombie_normal", "perro_infectado", "zombie_normal",
+        "zombie_corredor", "zombie_normal", "perro_infectado", "zombie_normal",
+        "zombie_tanque", "zombie_normal", "zombie_corredor", "zombie_tanque"],
 }
 
 # ==============================================================
@@ -284,7 +288,7 @@ PICKUP_RING = True               # aro que late sobre lo que SÍ se puede recoge
 LEVEL_COLLECTIBLES = {
     1: ("municion", "botiquin"),
     2: ("municion", "botiquin", "escopeta"),
-    3: ("municion", "botiquin", "escopeta"),
+    3: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
     4: ("municion", "botiquin", "escopeta"),
     5: ("municion", "botiquin", "escopeta"),
 }

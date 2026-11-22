@@ -643,12 +643,19 @@ class Player:
     def collect(self, kind):
         """Aplica un suministro. Devuelve el texto a mostrar, o None si no se usó."""
 
-        if kind == "municion":
+        if kind in ("municion", "municion_rifle", "municion_escopeta"):
+
+            if kind == "municion_rifle":
+                ammo_targets = (("rifle", "balas"),)
+            elif kind == "municion_escopeta":
+                ammo_targets = (("shotgun", "cartuchos"),)
+            else:
+                ammo_targets = (("rifle", "balas"), ("shotgun", "cartuchos"))
 
             # La caja rellena la reserva de las armas de fuego que ya tienes
             parts = []
 
-            for gun, label in (("rifle", "balas"), ("shotgun", "cartuchos")):
+            for gun, label in ammo_targets:
 
                 if gun not in self.unlocked:
                     continue

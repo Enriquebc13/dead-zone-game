@@ -50,6 +50,20 @@ def start_level(index, sounds):
                 # La máquina de estados patrulla alrededor de su posición inicial.
                 patrol_points = [spawn + pygame.Vector2(-48, 0), spawn + pygame.Vector2(48, 0)]
 
+        # Nivel 3: mezcla los tres patrones de patrullaje y reserva los dos
+        # tanques del final de la lista como jefes.
+        if index == 2:
+            if i < 6:
+                patrol_type = "ab"
+                route = level.patrol_routes.get(i, {})
+                patrol_points = [route[key] for key in ("a", "b") if key in route]
+            elif i < 11:
+                patrol_type = "waypoints"
+                patrol_points = level.waypoint_routes.get(i, [])
+            else:
+                patrol_type = "states"
+                patrol_points = [spawn + pygame.Vector2(-64, 0), spawn + pygame.Vector2(64, 0)]
+
         # En el nivel 2 los enemigos se organizan en tres grupos de horda.
         # Cada grupo despierta cuando uno de sus integrantes detecta al jugador.
         horde_group = None
@@ -180,7 +194,7 @@ def draw_hotbar(canvas, font, player):
         x += 158
 
 
-def draw_hud(canvas, font, big_font, level, player, enemies):
+def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
     alive = sum(1 for e in enemies if e.alive)
 
     canvas.blit(
@@ -240,6 +254,17 @@ def draw_hud(canvas, font, big_font, level, player, enemies):
         (12, 60)
     )
 
+    minutes, seconds = divmod(int(elapsed), 60)
+
+    canvas.blit(
+        font.render(
+            f"TIEMPO {minutes:02d}:{seconds:02d}",
+            True,
+            (150, 210, 255)
+        ),
+        (12, 84)
+    )
+
     draw_hotbar(canvas, font, player)
 
     # Pantalla de Game Over
@@ -280,7 +305,7 @@ def draw_hud(canvas, font, big_font, level, player, enemies):
 
 def draw_scene(
     canvas, font, big_font, level, player, enemies,
-    bullets, effects, floating, camera
+    bullets, effects, floating, camera, elapsed=0.0
 ):
     """Dibuja el estado actual del nivel sin actualizarlo (para la pausa)."""
 
@@ -317,7 +342,7 @@ def draw_scene(
             )
         )
 
-    draw_hud(canvas, font, big_font, level, player, enemies)
+    draw_hud(canvas, font, big_font, level, player, enemies, elapsed)
 
 
 def has_next_level(index):
@@ -412,6 +437,7 @@ def main():
 
     # Tiempo de partida
     level_start_time = 0
+    level_elapsed = 0.0
     victory_elapsed = 0
 
     camera = pygame.Vector2()
@@ -565,6 +591,7 @@ def main():
 
                         menu.sounds.play_level_music(result + 1)
                         menu.sounds.play_horde()
+                        level_elapsed = 0.0
                         level_transition.start(level_index + 1)
 
             # --------------------------------
@@ -618,6 +645,7 @@ def main():
 
                         play_level_music_safe(menu.sounds, level_index + 1)
                         menu.sounds.play_horde()
+                        level_elapsed = 0.0
                         level_transition.start(level_index + 1)
 
                     elif result == "menu":
@@ -742,6 +770,7 @@ def main():
 
                             menu.sounds.play_level_music(level_index + 1)
                             menu.sounds.play_horde()
+                            level_elapsed = 0.0
                             level_transition.start(level_index + 1)
 
                         # Configuración (volumen, etc.)
@@ -878,6 +907,7 @@ def main():
                                 camera = pygame.Vector2()
 
                                 menu.sounds.play_horde()
+                                level_elapsed = 0.0
                                 level_transition.start(level_index + 1)
 
                             else:
@@ -908,6 +938,9 @@ def main():
         # --------------------------------
 
         if playing and not victory and not paused and not level_transition.active:
+
+            if player.alive:
+                level_elapsed += dt
 
             keys = pygame.key.get_pressed()
 
@@ -1075,9 +1108,7 @@ def main():
 
                 victory = True
 
-                victory_elapsed = (
-                    pygame.time.get_ticks() - level_start_time
-                ) / 1000
+                victory_elapsed = level_elapsed
 
                 menu.sounds.stop_horde()
                 menu.sounds.stop_footsteps()
@@ -1267,7 +1298,8 @@ def main():
                 big_font,
                 level,
                 player,
-                enemies
+                enemies,
+                level_elapsed
             )
 
         # --------------------------------
@@ -1278,7 +1310,7 @@ def main():
 
             draw_scene(
                 canvas, font, big_font, level, player, enemies,
-                bullets, effects, floating, camera
+                bullets, effects, floating, camera, level_elapsed
             )
 
         # --------------------------------
@@ -1313,7 +1345,8 @@ def main():
                 big_font,
                 level,
                 player,
-                enemies
+                enemies,
+                level_elapsed
             )
 
             # Adaptar posición del mouse al canvas
@@ -1353,7 +1386,7 @@ def main():
 
             draw_scene(
                 canvas, font, big_font, level, player, enemies,
-                bullets, effects, floating, camera
+                bullets, effects, floating, camera, level_elapsed
             )
 
             pause_menu.draw(
@@ -1361,7 +1394,7 @@ def main():
                 level,
                 player,
                 enemies,
-                (pause_started - level_start_time) / 1000
+                level_elapsed
             )
 
             if in_pause_settings:

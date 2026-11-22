@@ -18,6 +18,7 @@ class Pickup:
             col * tile_size + tile_size / 2,
             row * tile_size + tile_size / 2,
         )
+        self.image2 = None  # mitad derecha de la escopeta (ocupa 2 casillas)
         self.collected = False
 
 
@@ -29,6 +30,8 @@ class Level:
         self.width = self.tmx.width * self.tile_w
         self.height = self.tmx.height * self.tile_h
         self.name = self.tmx.properties.get("nombre", "")
+        self._badge_font = None
+        self.dark_ambience = bool(self.tmx.properties.get("ambiente_oscuro", False))
 
         self.collisions = []
         self.player_start = pygame.Vector2(self.width / 2, self.height / 2)
@@ -88,6 +91,13 @@ class Level:
                 if gid:
                     pickup.image = self.tmx.get_tile_image_by_gid(gid)
                     skip.add((layer.name, pickup.col, pickup.row))
+                    # La escopeta del tileset mide 2 casillas de ancho
+                    if pickup.kind == "escopeta" and pickup.col + 1 < self.tmx.width:
+                        gid2 = layer.data[pickup.row][pickup.col + 1]
+                        if gid2 == gid + 1:
+                            pickup.image2 = self.tmx.get_tile_image_by_gid(gid2)
+                            pickup.pos.x += self.tile_w / 2
+                            skip.add((layer.name, pickup.col + 1, pickup.row))
                     break
 
         # El mapa no cambia: se dibuja una sola vez en una superficie
@@ -123,6 +133,10 @@ class Level:
     def draw(self, screen, camera):
         screen.blit(self.surface, (0, 0),
                     pygame.Rect(round(camera.x), round(camera.y), *screen.get_size()))
+        if self.dark_ambience:
+            shade = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+            shade.fill((8, 12, 24, 92))
+            screen.blit(shade, (0, 0))
 
         # Suministros que se pueden recoger (con un aro que late)
         pulse = 14 + 3 * math.sin(pygame.time.get_ticks() / 200)
@@ -133,6 +147,21 @@ class Level:
             y = pickup.row * self.tile_h - round(camera.y)
             if pickup.image is not None:
                 screen.blit(pickup.image, (x, y))
+            if pickup.image2 is not None:
+                screen.blit(pickup.image2, (x + self.tile_w, y))
+            if pickup.kind in ("municion_rifle", "municion_escopeta") and pickup.image is not None:
+                # Insignia pequeña: R = munición de rifle, S = munición de escopeta
+                label = "R" if pickup.kind == "municion_rifle" else "S"
+                badge = (x + self.tile_w - 6, y + 6)
+                pygame.draw.circle(screen, (18, 18, 22), badge, 8)
+                pygame.draw.circle(screen, (235, 205, 90), badge, 8, 1)
+                if self._badge_font is None:
+                    self._badge_font = pygame.font.Font(None, 16)
+                glyph = self._badge_font.render(label, True, (255, 255, 255))
+                screen.blit(glyph, glyph.get_rect(center=badge))
+            elif pickup.image is None:
+                pygame.draw.circle(screen, (25, 25, 25), (x + self.tile_w // 2, y + self.tile_h // 2), 13)
+                pygame.draw.circle(screen, (235, 205, 90), (x + self.tile_w // 2, y + self.tile_h // 2), 13, 2)
             if settings.PICKUP_RING:
                 center = (round(pickup.pos.x - camera.x), round(pickup.pos.y - camera.y))
                 pygame.draw.circle(screen, (255, 240, 120), center, round(pulse), 1)
