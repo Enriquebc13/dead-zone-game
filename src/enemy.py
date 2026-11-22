@@ -129,6 +129,15 @@ class Enemy:
             self._set_state("hurt")
             self.stagger_cd = 0.7
 
+    def knockback(self, direction, distance, level):
+        """Empuja al enemigo (golpe de hacha). El tanque casi no se mueve."""
+        if not self.alive or distance <= 0:
+            return
+        direction = pygame.Vector2(direction)
+        if direction.length_squared() == 0:
+            return
+        self._move(direction.normalize() * distance * self.cfg.get("knockback", 1.0), level)
+
     # --------------------------------
     # MOVIMIENTO
     # --------------------------------

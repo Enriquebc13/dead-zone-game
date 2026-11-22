@@ -1,24 +1,35 @@
+
 import random
-
 import pygame
-
 import settings
-from src.animation import Animation
 import math
 
+from src.animation import Animation
 from src.bullet import Bullet
 from src.spritesheet import SpriteSheet
 
 
 class Player:
 
-    def __init__(self, pos, sounds):
+    def __init__(self, pos, sounds, weapons=None):
 
         self.pos = pygame.Vector2(pos)
         self.facing = 1
 
+        # "weapon" = arma de fuego que se ve en pantalla (rifle / shotgun)
         self.weapon = "rifle"
         self.state = "idle"
+
+        # Armas del nivel ("axe" = hacha) y la que está equipada
+        self.unlocked = set(weapons or ("rifle", "axe"))
+        self.equipped = "rifle"
+
+        # Munición por arma de fuego: cargador (mag) y reserva
+        self.ammo = {gun: dict(values) for gun, values in settings.AMMO.items()}
+
+        # Golpe de hacha
+        self.axe_hit_done = False
+        self.pending_melee = False
 
         self.sounds = sounds
 
@@ -26,24 +37,26 @@ class Player:
         self.max_hp = settings.PLAYER_MAX_HP
         self.hp = self.max_hp
         self.alive = True
-        self.dead_done = False          # terminó la animación de muerte
-        self.invuln = 0.0               # tiempo restante sin recibir daño
-        self.aim = pygame.Vector2(pos) + (100, 0)   # punto del mouse en el mundo
-        self.pending_bullets = []       # balas nuevas; main las recoge
-        self.pending_effects = []       # efectos (sangre / escudo) nuevos
-        self.aim_angle = 0.0            # giro del torso (+ = hacia arriba)
+        self.dead_done = False
+        self.invuln = 0.0
+
+        self.aim = pygame.Vector2(pos) + (100, 0)
+        self.pending_bullets = []
+        self.pending_effects = []
+
+        self.aim_angle = 0.0
+        self.aim_dir = ""
+        self.fire_dir = ""
         self.fire_frames_done = []
-        self._tilt_cache = {}
 
         self.shield_active = False
         self.shield_sound_played = False
 
-        # Control de sonidos de disparo
+        # Control de sonidos
         self.shoot_sounds_played = []
-
-        # Control de sonidos de recoger suministro y muerte
         self.pickup_sound_played = False
         self.dead_sound_played = False
+        self.axe_sound_played = False
 
         # Animaciones de ambas armas
         self.anims = {
@@ -53,6 +66,7 @@ class Player:
 
         # Animaciones adicionales
         self.extra_anims = {
+
             "dead": self._build_extra(
                 settings.SOLDIER_DEAD_SHEET,
                 settings.SOLDIER_DEAD_COLS,
@@ -65,18 +79,29 @@ class Player:
                 settings.SOLDIER_PICKUP_COLS,
                 settings.SOLDIER_PICKUP_ROWS,
                 "pickup"
-            )
+            ),
+
+            "axe": self._build_extra(
+                settings.SOLDIER_AXE_SHEET,
+                settings.SOLDIER_AXE_COLS,
+                settings.SOLDIER_AXE_ROWS,
+                "axe",
+                frame_size=(320, 220)
+            ),
         }
 
+        self.anim_key = "idle"
         self.anim = self.anims[self.weapon]["idle"]
 
+        # Acciones que no pueden interrumpirse
         self.action_states = (
             "shoot",
             "shield",
             "reload",
             "remove_shield",
             "dead",
-            "pickup"
+            "pickup",
+            "axe"
         )
 
     # --------------------------------
@@ -95,11 +120,23 @@ class Player:
 
         s = settings.SOLDIER_SCALE
         fps = settings.ANIMATION_FPS
+        f = settings.IDLE_AIM_FRAME
 
         return {
 
+            # Reposo apuntando
             "idle": Animation(
-                [sheet.get_frame(0, settings.ROW_FIRE, s)],
+                [sheet.get_frame(f, settings.ROW_FIRE, s)],
+                fps["idle"]
+            ),
+
+            "idle_up": Animation(
+                [sheet.get_frame(f, settings.ROW_FIRE_UP, s)],
+                fps["idle"]
+            ),
+
+            "idle_down": Animation(
+                [sheet.get_frame(f, settings.ROW_FIRE_DOWN, s)],
                 fps["idle"]
             ),
 
@@ -115,6 +152,18 @@ class Player:
 
             "shoot": Animation(
                 sheet.get_row(settings.ROW_FIRE, s),
+                fps["shoot"],
+                loop=False
+            ),
+
+            "shoot_up": Animation(
+                sheet.get_row(settings.ROW_FIRE_UP, s),
+                fps["shoot"],
+                loop=False
+            ),
+
+            "shoot_down": Animation(
+                sheet.get_row(settings.ROW_FIRE_DOWN, s),
                 fps["shoot"],
                 loop=False
             ),
@@ -137,11 +186,20 @@ class Player:
     # --------------------------------
 
     @staticmethod
-    def _build_extra(sheet_path, cols, rows, animation_name):
+    def _build_extra(
+        sheet_path,
+        cols,
+        rows,
+        animation_name,
+        frame_size=None
+    ):
+
+        if frame_size is None:
+            frame_size = settings.SOLDIER_FRAME_SIZE
 
         sheet = SpriteSheet(
             sheet_path,
-            settings.SOLDIER_FRAME_SIZE,
+            frame_size,
             cols,
             rows
         )
@@ -161,22 +219,27 @@ class Player:
         if animation_name not in self.extra_anims:
             return
 
-        # No interrumpir otra acción
         if self.state in self.action_states:
+            return
+
+        if not self.alive:
             return
 
         self.sounds.stop_footsteps()
 
         self.state = animation_name
+        self.anim_key = animation_name
         self.anim = self.extra_anims[animation_name]
         self.anim.reset()
 
-        # Preparar los sonidos de la animación
         if animation_name == "pickup":
             self.pickup_sound_played = False
 
         elif animation_name == "dead":
             self.dead_sound_played = False
+
+        elif animation_name == "axe":
+            self.axe_sound_played = False
 
     # --------------------------------
     # CAMBIAR ARMA
@@ -190,11 +253,10 @@ class Player:
         if weapon == self.weapon:
             return
 
-        # No cambiar de arma durante una acción
         if self.state in self.action_states:
             return
 
-        new_anim = self.anims[weapon][self.state]
+        new_anim = self.anims[weapon][self.anim_key]
 
         new_anim.index = self.anim.index
         new_anim.timer = self.anim.timer
@@ -208,31 +270,55 @@ class Player:
 
     def play_action(self, action):
 
-        if action not in ("shoot", "reload"):
+        if action not in ("shoot", "reload", "axe"):
             return
 
         if not self.alive:
             return
 
-        # No interrumpir el escudo ni otras acciones
         if self.state in self.action_states:
             return
+
+        # Recargar solo si falta munición en el cargador y hay reserva
+        if action == "reload":
+
+            ammo = self.ammo[self.weapon]
+            full = settings.AMMO[self.weapon]["mag_size"]
+
+            if ammo["mag"] >= full or ammo["reserve"] <= 0:
+                return
 
         self.sounds.stop_footsteps()
 
         self.state = action
-        self.anim = self.anims[self.weapon][action]
-        self.anim.reset()
 
-        # Preparar sonidos de la acción
         if action == "shoot":
+
+            self.fire_dir = self.aim_dir
+            self.anim_key = "shoot" + self.fire_dir
+
+            self.anim = self.anims[self.weapon][self.anim_key]
 
             self.shoot_sounds_played = []
             self.fire_frames_done = []
 
-        elif action == "reload":
+        elif action == "axe":
 
-            self.sounds.play_reload_sound(self.weapon)
+            self.anim_key = "axe"
+            self.anim = self.extra_anims["axe"]
+
+            self.axe_sound_played = False
+            self.axe_hit_done = False
+
+        else:
+
+            self.anim_key = action
+            self.anim = self.anims[self.weapon][self.anim_key]
+
+            if action == "reload":
+                self.sounds.play_reload_sound(self.weapon)
+
+        self.anim.reset()
 
     # --------------------------------
     # ACTIVAR / DESACTIVAR ESCUDO
@@ -248,8 +334,8 @@ class Player:
 
             self.shield_active = False
             self.state = "remove_shield"
+            self.anim_key = "remove_shield"
 
-            # Reproducir la animación del escudo al revés
             shield_frames = self.anims[self.weapon]["shield"].frames
 
             self.anim = Animation(
@@ -261,13 +347,7 @@ class Player:
             return
 
         # No activar durante otras acciones
-        if self.state in (
-            "shoot",
-            "reload",
-            "remove_shield",
-            "dead",
-            "pickup"
-        ):
+        if self.state in self.action_states:
             return
 
         self.sounds.stop_footsteps()
@@ -276,6 +356,7 @@ class Player:
         self.shield_sound_played = False
 
         self.state = "shield"
+        self.anim_key = "shield"
 
         self.anim = self.anims[self.weapon]["shield"]
         self.anim.reset()
@@ -285,83 +366,306 @@ class Player:
     # --------------------------------
 
     def muzzle(self):
-        """Punta del cañón en el mundo, según el giro actual del torso."""
+
+        """Punta del cañón en el mundo."""
+
         s = settings.SOLDIER_SCALE
-        tip_x, tip_y = settings.GUN_TIP[self.weapon]
-        hip_x, hip_y = settings.TORSO_HIP
+        tip_x, tip_y = settings.GUN_TIP[self.weapon][self.fire_dir]
+        piv_x, piv_y = settings.SOLDIER_PIVOT
 
-        # Vector cadera -> punta del cañón (y positiva hacia arriba)
-        vx = (tip_x - hip_x) * s
-        vy = (hip_y - tip_y) * s
-
-        a = math.radians(self.aim_angle)
-        rx = vx * math.cos(a) - vy * math.sin(a)
-        ry = vx * math.sin(a) + vy * math.cos(a)
-
-        hip_up = (settings.SOLDIER_PIVOT[1] - hip_y) * s
-        return pygame.Vector2(self.pos.x + self.facing * rx,
-                              self.pos.y - hip_up - ry)
+        return pygame.Vector2(
+            self.pos.x + self.facing * (tip_x - piv_x) * s,
+            self.pos.y + (tip_y - piv_y) * s
+        )
 
     def _update_aim_angle(self, dt):
-        """Ángulo hacia el mouse (+ arriba, - abajo), suavizado y limitado."""
+
         s = settings.SOLDIER_SCALE
-        hip_up = (settings.SOLDIER_PIVOT[1] - settings.TORSO_HIP[1]) * s
+
+        hip_up = (
+            settings.SOLDIER_PIVOT[1] - settings.TORSO_HIP[1]
+        ) * s
+
         dx = max(1.0, abs(self.aim.x - self.pos.x))
         dy = (self.pos.y - hip_up) - self.aim.y
 
         target = math.degrees(math.atan2(dy, dx))
+
         limit = settings.AIM_MAX_ANGLE
         target = max(-limit, min(limit, target))
 
-        self.aim_angle += (target - self.aim_angle) * min(1.0, settings.AIM_SMOOTH * dt)
+        self.aim_angle += (
+            (target - self.aim_angle)
+            * min(1.0, settings.AIM_SMOOTH * dt)
+        )
+
+        self._update_aim_dir()
+
+    def _update_aim_dir(self):
+
+        a = self.aim_angle
+        enter, leave = settings.AIM_ENTER, settings.AIM_LEAVE
+
+        d = self.aim_dir
+
+        if d == "_up" and a < leave:
+            d = ""
+
+        elif d == "_down" and a > -leave:
+            d = ""
+
+        if d == "":
+
+            if a > enter:
+                d = "_up"
+
+            elif a < -enter:
+                d = "_down"
+
+        self.aim_dir = d
 
     def try_shoot(self):
-        """Dispara si no está haciendo otra acción (la usan clic izq. y J)."""
-        if self.alive:
+
+        self.attack()
+
+    def attack(self):
+        """Clic izquierdo / J: dispara el arma de fuego o golpea con el hacha."""
+
+        if not self.alive:
+            return
+
+        # Hacha equipada: golpe cuerpo a cuerpo
+        if self.equipped == "axe":
+            self.play_action("axe")
+            return
+
+        ammo = self.ammo[self.weapon]
+
+        if ammo["mag"] > 0:
             self.play_action("shoot")
 
+        # Cargador vacío: recarga sola si hay reserva
+        elif ammo["reserve"] > 0:
+            self.play_action("reload")
+
+        # Sin ninguna bala: hachazo
+        elif "axe" in self.unlocked:
+            self.play_action("axe")
+
     def _fire(self):
+
+        # Cada bala (o cartucho de escopeta) gasta munición del cargador
+        ammo = self.ammo[self.weapon]
+
+        if ammo["mag"] <= 0:
+            return
+
+        ammo["mag"] -= 1
+
         origin = self.muzzle()
         direction = self.aim - origin
 
         if direction.length() < 8:
             direction = pygame.Vector2(self.facing, 0)
+
         direction = direction.normalize()
 
-        # La bala sale de la boca del arma; lead_from cubre el tramo
-        # cuerpo -> cañón por si el zombie ya está pegado al soldado
         lead = pygame.Vector2(self.pos.x, origin.y)
 
         if self.weapon == "shotgun":
+
             spread = settings.SHOTGUN_SPREAD
+
             for _ in range(settings.SHOTGUN_PELLETS):
+
                 self.pending_bullets.append(Bullet(
-                    origin, direction.rotate(random.uniform(-spread, spread)),
-                    settings.SHOTGUN_DAMAGE, settings.SHOTGUN_BULLET_SPEED,
-                    settings.SHOTGUN_RANGE, pellet=True, lead_from=lead))
+                    origin,
+                    direction.rotate(random.uniform(-spread, spread)),
+                    settings.SHOTGUN_DAMAGE,
+                    settings.SHOTGUN_BULLET_SPEED,
+                    settings.SHOTGUN_RANGE,
+                    pellet=True,
+                    lead_from=lead
+                ))
+
         else:
+
             spread = settings.RIFLE_SPREAD
+
             self.pending_bullets.append(Bullet(
-                origin, direction.rotate(random.uniform(-spread, spread)),
-                settings.RIFLE_DAMAGE, settings.RIFLE_BULLET_SPEED,
-                settings.RIFLE_RANGE, lead_from=lead))
+                origin,
+                direction.rotate(random.uniform(-spread, spread)),
+                settings.RIFLE_DAMAGE,
+                settings.RIFLE_BULLET_SPEED,
+                settings.RIFLE_RANGE,
+                lead_from=lead
+            ))
 
     # --------------------------------
     # DAÑO Y MUERTE
     # --------------------------------
 
+    # --------------------------------
+    # ARMAS, MUNICIÓN Y SUMINISTROS
+    # --------------------------------
+
+    def equip(self, slot):
+        """Equipa "rifle", "axe" o "shotgun" si ya está desbloqueada."""
+
+        if slot not in self.unlocked or slot == self.equipped:
+            return
+
+        # Rifle <-> hacha se puede cambiar en pleno golpe; cambiar de arma
+        # de fuego (rifle <-> escopeta) solo en reposo
+        if (
+            slot in self.anims
+            and slot != self.weapon
+            and self.state in self.action_states
+        ):
+            return
+
+        self.equipped = slot
+
+        if slot in self.anims:
+            self.set_weapon(slot)
+
+    def unlock_weapon(self, weapon):
+
+        if weapon in self.unlocked:
+            return
+
+        self.unlocked.add(weapon)
+
+        if weapon in self.ammo:
+
+            self.ammo[weapon]["mag"] = settings.AMMO[weapon]["mag_size"]
+            self.ammo[weapon]["reserve"] += settings.AMMO[weapon]["pickup"]
+
+        self.equip(weapon)
+
+    def _finish_reload(self):
+
+        ammo = self.ammo[self.weapon]
+        full = settings.AMMO[self.weapon]["mag_size"]
+
+        loaded = min(full - ammo["mag"], ammo["reserve"])
+
+        ammo["mag"] += loaded
+        ammo["reserve"] -= loaded
+
+    def heal(self, amount):
+
+        if self.hp >= self.max_hp:
+            return False
+
+        self.hp = min(self.max_hp, self.hp + amount)
+
+        return True
+
+    def collect(self, kind):
+        """Aplica un suministro. Devuelve el texto a mostrar, o None si no se usó."""
+
+        if kind == "municion":
+
+            # La caja rellena la reserva de las armas de fuego que ya tienes
+            parts = []
+
+            for gun, label in (("rifle", "balas"), ("shotgun", "cartuchos")):
+
+                if gun not in self.unlocked:
+                    continue
+
+                ammo = self.ammo[gun]
+                gain = min(
+                    settings.AMMO[gun]["pickup"],
+                    ammo["max_reserve"] - ammo["reserve"]
+                )
+
+                if gain > 0:
+                    ammo["reserve"] += gain
+                    parts.append(f"+{gain} {label}")
+
+            if not parts:
+                return None
+
+            message = "  ".join(parts)
+
+        elif kind == "botiquin":
+
+            before = self.hp
+
+            if not self.heal(settings.MEDKIT_HEAL):
+                return None
+
+            message = f"+{round(self.hp - before)} vida"
+
+        elif kind == "escopeta":
+
+            self.unlock_weapon("shotgun")
+            message = "Escopeta"
+
+        else:
+            return None
+
+        self._pickup_feedback()
+
+        return message
+
+    def _pickup_feedback(self):
+
+        if (
+            settings.PICKUP_ANIMATION
+            and self.state not in self.action_states
+        ):
+            self.play_test_animation("pickup")
+
+        else:
+            self.sounds.play_pickup_sound()
+
+    def melee_targets(self, enemies):
+        """Enemigos vivos al alcance del hacha, delante del soldado."""
+
+        targets = []
+
+        for enemy in enemies:
+
+            if not enemy.alive:
+                continue
+
+            dx = (enemy.pos.x - self.pos.x) * self.facing
+            dy = abs(enemy.pos.y - self.pos.y)
+
+            reach = settings.AXE_REACH + enemy.cfg["hit"][0] / 2
+            depth = settings.AXE_DEPTH + enemy.cfg["foot"][1]
+
+            if -10 <= dx <= reach and dy <= depth:
+                targets.append(enemy)
+
+        return targets
+
     def take_damage(self, amount):
+
         if not self.alive or self.invuln > 0:
             return
 
         if self.shield_active:
+
             amount *= settings.SHIELD_DAMAGE_MULT
+
             self.pending_effects.append((
                 "shield",
-                (self.pos.x + self.facing * 30, self.pos.y - 45)
+                (
+                    self.pos.x + self.facing * 30,
+                    self.pos.y - 45
+                )
             ))
+
         else:
-            self.pending_effects.append(("blood", (self.pos.x, self.pos.y - 50)))
+
+            self.pending_effects.append((
+                "blood",
+                (self.pos.x, self.pos.y - 50)
+            ))
 
         self.hp = max(0, self.hp - amount)
         self.invuln = settings.PLAYER_INVULNERABLE_TIME
@@ -370,13 +674,17 @@ class Player:
             self.die()
 
     def die(self):
+
         self.alive = False
         self.shield_active = False
+
         self.pending_bullets.clear()
         self.sounds.stop_footsteps()
 
         self.state = "dead"
+        self.anim_key = "dead"
         self.anim = self.extra_anims["dead"]
+
         self.anim.reset()
         self.dead_sound_played = False
 
@@ -387,7 +695,9 @@ class Player:
     def _foot_rect(self, pos):
 
         rect = pygame.Rect(
-            0, 0, *settings.FOOT_SIZE
+            0,
+            0,
+            *settings.FOOT_SIZE
         )
 
         rect.midbottom = (
@@ -405,7 +715,7 @@ class Player:
 
         self.invuln = max(0.0, self.invuln - dt)
 
-        # MUERTO: reproducir la caída y quedarse en el suelo
+        # MUERTO
         if not self.alive:
 
             self.anim.update(dt)
@@ -414,6 +724,7 @@ class Player:
                 not self.dead_sound_played
                 and self.anim.index >= settings.DEAD_SOUND_FRAME - 1
             ):
+
                 self.sounds.play_dead_sound()
                 self.dead_sound_played = True
 
@@ -424,6 +735,7 @@ class Player:
 
         # El soldado siempre mira hacia donde apunta el mouse
         self.facing = 1 if self.aim.x >= self.pos.x else -1
+
         self._update_aim_angle(dt)
 
         # ESCUDO ACTIVO
@@ -431,7 +743,6 @@ class Player:
 
             self.anim.update(dt)
 
-            # Reproducir sonido en el fotograma configurado
             if (
                 not self.shield_sound_played
                 and self.anim.index >= settings.SHIELD_SOUND_FRAME - 1
@@ -451,12 +762,13 @@ class Player:
             "reload",
             "remove_shield",
             "dead",
-            "pickup"
+            "pickup",
+            "axe"
         ):
 
             self.anim.update(dt)
 
-            # Sincronizar los dos disparos con la animación
+            # Sonidos y disparos
             if self.state == "shoot":
 
                 for i, frame in enumerate(settings.SHOOT_SOUND_FRAMES):
@@ -469,8 +781,10 @@ class Player:
                         self.sounds.play_shoot_sound(self.weapon)
                         self.shoot_sounds_played.append(i)
 
-                # Las balas salen en los cuadros con fogonazo
-                for i, frame in enumerate(settings.FIRE_FRAMES[self.weapon]):
+                # Las balas salen en los cuadros configurados
+                for i, frame in enumerate(
+                    settings.FIRE_FRAMES[self.weapon]
+                ):
 
                     if (
                         self.anim.index >= frame
@@ -480,7 +794,7 @@ class Player:
                         self._fire()
                         self.fire_frames_done.append(i)
 
-            # Sonido de recoger suministro en su fotograma
+            # Sonido de recoger suministro
             elif self.state == "pickup":
 
                 if (
@@ -491,7 +805,27 @@ class Player:
                     self.sounds.play_pickup_sound()
                     self.pickup_sound_played = True
 
-            # Sonido de muerte en su fotograma
+            # Sonido del golpe con hacha
+            elif self.state == "axe":
+
+                if (
+                    not self.axe_sound_played
+                    and self.anim.index >= settings.AXE_SOUND_FRAME - 1
+                ):
+
+                    self.sounds.play_axe_sound()
+                    self.axe_sound_played = True
+
+                # El golpe cae en el cuadro configurado
+                if (
+                    not self.axe_hit_done
+                    and self.anim.index >= settings.AXE_HIT_FRAME
+                ):
+
+                    self.axe_hit_done = True
+                    self.pending_melee = True
+
+            # Sonido de muerte
             elif self.state == "dead":
 
                 if (
@@ -502,12 +836,16 @@ class Player:
                     self.sounds.play_dead_sound()
                     self.dead_sound_played = True
 
-            # Cuando termina la animación,
-            # regresar al estado de reposo
+            # Cuando termina la animación, regresar al reposo
             if self.anim.finished:
 
+                if self.state == "reload":
+                    self._finish_reload()
+
                 self.state = "idle"
-                self.anim = self.anims[self.weapon]["idle"]
+                self.anim_key = "idle" + self.aim_dir
+
+                self.anim = self.anims[self.weapon][self.anim_key]
                 self.anim.reset()
 
             return
@@ -521,9 +859,15 @@ class Player:
             keys[pygame.K_s] - keys[pygame.K_w]
         )
 
+        # Moverse hacia atrás (contra donde mira) solo permite caminar
+        backwards = (
+            direction.x != 0
+            and (direction.x > 0) != (self.facing > 0)
+        )
+
         run = (
-            keys[pygame.K_LSHIFT]
-            or keys[pygame.K_RSHIFT]
+            (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
+            and not backwards
         )
 
         moving = direction.length_squared() > 0
@@ -532,19 +876,30 @@ class Player:
             "run" if run else "walk"
         ) if moving else "idle"
 
-        if new_state != self.state:
+        new_key = (
+            new_state + self.aim_dir
+            if new_state == "idle"
+            else new_state
+        )
 
-            new_anim = self.anims[self.weapon][new_state]
+        if new_key != self.anim_key:
 
-            if new_state in ("walk", "run") and self.state in ("walk", "run"):
+            new_anim = self.anims[self.weapon][new_key]
+
+            if (
+                new_state in ("walk", "run")
+                and self.state in ("walk", "run")
+            ):
 
                 new_anim.index = self.anim.index
                 new_anim.timer = self.anim.timer
 
             else:
+
                 new_anim.reset()
 
             self.state = new_state
+            self.anim_key = new_key
             self.anim = new_anim
 
         # --------------------------------
@@ -601,48 +956,6 @@ class Player:
         self.anim.update(dt)
 
     # --------------------------------
-    # GIRO DEL TORSO
-    # --------------------------------
-
-    def _tilt_frame(self, frame, flipped, angle):
-        """Piernas fijas; cabeza, torso y arma giran sobre la cadera."""
-        if abs(angle) < 1:
-            return frame
-
-        key = (id(frame), round(angle))
-        cached = self._tilt_cache.get(key)
-        if cached is not None:
-            return cached
-
-        s = settings.SOLDIER_SCALE
-        w, h = frame.get_size()
-        cut = round(settings.TORSO_CUT * s)
-        hx = settings.TORSO_HIP[0] * s
-        hy = settings.TORSO_HIP[1] * s
-
-        if flipped:
-            hx = w - hx
-            angle = -angle
-
-        out = pygame.Surface((w, h), pygame.SRCALPHA)
-
-        legs = frame.copy()
-        legs.fill((0, 0, 0, 0), pygame.Rect(0, 0, w, cut))
-        out.blit(legs, (0, 0))
-
-        upper = frame.subsurface(pygame.Rect(0, 0, w, cut))
-        pad = pygame.Surface((2 * w, 2 * h), pygame.SRCALPHA)
-        ox, oy = round(w - hx), round(h - hy)
-        pad.blit(upper, (ox, oy))
-
-        rotated = pygame.transform.rotate(pad, angle)
-        rect = rotated.get_rect(center=(w, h))
-        out.blit(rotated, (rect.x - ox, rect.y - oy))
-
-        self._tilt_cache[key] = out
-        return out
-
-    # --------------------------------
     # DIBUJAR JUGADOR
     # --------------------------------
 
@@ -652,14 +965,19 @@ class Player:
             flipped=self.facing < 0
         )
 
-        # Giro del torso hacia el mouse (solo mientras camina, está quieto o dispara)
-        if self.state in ("idle", "walk", "run", "shoot", "reload"):
-            frame = self._tilt_frame(frame, self.facing < 0, self.aim_angle)
-
         # Parpadeo rojo al recibir daño
-        if self.alive and self.invuln > 0 and int(self.invuln * 20) % 2 == 0:
+        if (
+            self.alive
+            and self.invuln > 0
+            and int(self.invuln * 20) % 2 == 0
+        ):
+
             frame = frame.copy()
-            frame.fill((120, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+            frame.fill(
+                (120, 0, 0),
+                special_flags=pygame.BLEND_RGB_ADD
+            )
 
         px, py = (
             v * settings.SOLDIER_SCALE

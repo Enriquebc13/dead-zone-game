@@ -14,7 +14,10 @@ from src.settings_menu import SettingsMenu
 def start_level(index, sounds):
     """Crea el nivel, el jugador y los enemigos de un nivel (0 = nivel 1)."""
     level = Level(settings.LEVELS[index])
-    player = Player(level.player_start, sounds)
+    player = Player(
+        level.player_start, sounds,
+        settings.LEVEL_WEAPONS.get(index + 1)
+    )
 
     types = settings.LEVEL_ENEMY_TYPES.get(index + 1, ["zombie_normal"])
     enemies = []
@@ -25,11 +28,84 @@ def start_level(index, sounds):
     return level, player, enemies
 
 
+# Casillas de arma: (tecla, nombre interno, texto)
+HOTBAR = (
+    ("1", "rifle", "RIFLE"),
+    ("2", "axe", "HACHA"),
+    ("3", "shotgun", "ESCOPETA"),
+)
+
+
+def resolve_melee(player, enemies, effects, level):
+    """Aplica el golpe de hacha a los enemigos que estén al alcance."""
+    for enemy in player.melee_targets(enemies):
+        enemy.take_damage(settings.AXE_DAMAGE)
+        enemy.knockback(
+            (enemy.pos.x - player.pos.x, 0),
+            settings.AXE_KNOCKBACK, level
+        )
+        effects.append(Effect("blood", enemy.hit_rect().center, scale=0.9))
+
+
+def collect_pickups(level, player, floating):
+    """Recoge los suministros que el soldado esté pisando."""
+    if not player.alive:
+        return
+
+    for pickup in level.pickups:
+        if pickup.collected:
+            continue
+
+        if player.pos.distance_to(pickup.pos) > settings.PICKUP_RADIUS:
+            continue
+
+        message = player.collect(pickup.kind)
+
+        # None = no se pudo usar (vida llena, reserva llena...): se queda en el piso
+        if message is not None:
+            pickup.collected = True
+            floating.append([message, pygame.Vector2(player.pos.x, player.pos.y - 110), 0.0])
+
+
+def draw_hotbar(canvas, font, player):
+    x, y = 12, canvas.get_height() - 54
+
+    for key, slot, label in HOTBAR:
+
+        if slot not in player.unlocked:
+            continue
+
+        selected = slot == player.equipped
+        rect = pygame.Rect(x, y, 150, 42)
+
+        pygame.draw.rect(canvas, (20, 20, 20), rect)
+        pygame.draw.rect(
+            canvas, (255, 220, 90) if selected else (120, 120, 120), rect, 2
+        )
+
+        canvas.blit(
+            font.render(f"[{key}] {label}", True, (255, 255, 255)),
+            (x + 8, y + 5)
+        )
+
+        if slot in player.ammo:
+            ammo = player.ammo[slot]
+            empty = ammo["mag"] == 0 and ammo["reserve"] == 0
+            text = "SIN BALAS" if empty else f"{ammo['mag']} / {ammo['reserve']}"
+            color = (230, 70, 70) if empty or ammo["mag"] == 0 else (255, 220, 120)
+        else:
+            text, color = "cuerpo a cuerpo", (190, 190, 190)
+
+        canvas.blit(font.render(text, True, color), (x + 8, y + 23))
+
+        x += 158
+
+
 def draw_hud(canvas, font, big_font, level, player, enemies):
     alive = sum(1 for e in enemies if e.alive)
 
     canvas.blit(
-        font.render(f"{level.name} | {player.weapon}", True, (255, 255, 255)),
+        font.render(f"{level.name}", True, (255, 255, 255)),
         (12, 10)
     )
 
@@ -48,6 +124,8 @@ def draw_hud(canvas, font, big_font, level, player, enemies):
         font.render(f"Enemigos restantes: {alive}", True, (255, 220, 120)),
         (12, 60)
     )
+
+    draw_hotbar(canvas, font, player)
 
     if player.dead_done:
         overlay = pygame.Surface(canvas.get_size(), pygame.SRCALPHA)
@@ -98,6 +176,7 @@ def main():
     enemies = []
     bullets = []
     effects = []
+    floating = []            # textos flotantes (+30 balas, +25 vida...)
     level_index = 0
 
     camera = pygame.Vector2()
@@ -217,6 +296,7 @@ def main():
                         )
                         bullets = []
                         effects = []
+                        floating = []
 
                         camera = pygame.Vector2()
 
@@ -242,17 +322,22 @@ def main():
                         enemies = []
                         bullets = []
                         effects = []
+                        floating = []
 
                         menu.sounds.stop_horde()
                         menu.sounds.stop_footsteps()
                         menu.sounds.play_menu_music()
 
+                    # 1 = rifle, 2 = hacha, 3 = escopeta (si ya la recogiste)
                     elif event.key == pygame.K_1:
-                        player.set_weapon("rifle")
+                        player.equip("rifle")
 
                     elif event.key == pygame.K_2:
-                        player.set_weapon("shotgun")
-                        
+                        player.equip("axe")
+
+                    elif event.key == pygame.K_3:
+                        player.equip("shotgun")
+
                     # K = escudo (igual que el clic derecho)
                     elif event.key == pygame.K_k:
                         player.toggle_shield()
@@ -265,6 +350,7 @@ def main():
                             )
                             bullets = []
                             effects = []
+                            floating = []
                             menu.sounds.play_horde()
                         else:
                             player.play_action("reload")
@@ -276,6 +362,9 @@ def main():
 
                     elif event.key == pygame.K_F4:
                         player.play_test_animation("pickup")
+                                        # H = atacar con hacha
+                    elif event.key == pygame.K_h:
+                        player.play_action("axe")
 
                 # Clic derecho = escudo (el disparo con clic izquierdo
                 # se lee más abajo para poder mantenerlo presionado)
@@ -300,11 +389,20 @@ def main():
                 mouse_y * settings.SCREEN_HEIGHT / window_height + camera.y
             )
 
-            # Disparo: clic izquierdo o tecla J (se puede mantener)
+            # Atacar (dispara o golpea con el hacha según el arma equipada):
+            # clic izquierdo o tecla J, se puede mantener
             if pygame.mouse.get_pressed()[0] or keys[pygame.K_j]:
-                player.try_shoot()
+                player.attack()
 
             player.update(dt, keys, level)
+
+            # Golpe de hacha en el cuadro de impacto
+            if player.pending_melee:
+                player.pending_melee = False
+                resolve_melee(player, enemies, effects, level)
+
+            # Suministros del mapa
+            collect_pickups(level, player, floating)
 
             # Balas nuevas del jugador
             bullets.extend(player.pending_bullets)
@@ -326,6 +424,11 @@ def main():
             for effect in effects:
                 effect.update(dt)
             effects = [e for e in effects if e.alive]
+
+            for item in floating:
+                item[1].y -= 30 * dt
+                item[2] += dt
+            floating = [f for f in floating if f[2] < 1.4]
 
             if not player.alive:
                 menu.sounds.stop_horde()
@@ -374,6 +477,13 @@ def main():
 
             for effect in effects:
                 effect.draw(canvas, camera)
+
+            for text, pos, age in floating:
+                label = font.render(text, True, (255, 255, 160))
+                canvas.blit(
+                    label,
+                    label.get_rect(center=(round(pos.x - camera.x), round(pos.y - camera.y)))
+                )
 
             # Mira del mouse
             if player.alive:
