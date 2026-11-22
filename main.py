@@ -10,6 +10,7 @@ from src.menu import Menu
 from src.settings_menu import SettingsMenu
 from src.victory_screen import VictoryScreen
 from src.pause_menu import PauseMenu
+from src.level_transition import LevelTransition
 
 
 def start_level(index, sounds):
@@ -219,9 +220,20 @@ def draw_hud(canvas, font, big_font, level, player, enemies):
         (20, 37)
     )
 
+    killed = len(enemies) - alive
+
     canvas.blit(
         font.render(
-            f"Enemigos restantes: {alive}",
+            f"VIDAS: {player.lives}",
+            True,
+            (255, 100, 100)
+        ),
+        (270, 34)
+    )
+
+    canvas.blit(
+        font.render(
+            f"Eliminados: {killed}    Restantes: {alive}",
             True,
             (255, 220, 120)
         ),
@@ -378,6 +390,7 @@ def main():
     settings_menu = SettingsMenu(menu.sounds)
     victory_screen = VictoryScreen()
     pause_menu = PauseMenu()
+    level_transition = LevelTransition()
 
     # --------------------------------
     # ESTADOS DEL JUEGO
@@ -430,6 +443,11 @@ def main():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+
+            # Evitar que los clics/teclas usados para cambiar de nivel
+            # también activen acciones dentro del nivel nuevo.
+            if level_transition.active:
+                continue
 
             # --------------------------------
             # PANTALLA COMPLETA
@@ -547,6 +565,7 @@ def main():
 
                         menu.sounds.play_level_music(result + 1)
                         menu.sounds.play_horde()
+                        level_transition.start(level_index + 1)
 
             # --------------------------------
             # DENTRO DEL NIVEL
@@ -599,6 +618,7 @@ def main():
 
                         play_level_music_safe(menu.sounds, level_index + 1)
                         menu.sounds.play_horde()
+                        level_transition.start(level_index + 1)
 
                     elif result == "menu":
 
@@ -722,6 +742,7 @@ def main():
 
                             menu.sounds.play_level_music(level_index + 1)
                             menu.sounds.play_horde()
+                            level_transition.start(level_index + 1)
 
                         # Configuración (volumen, etc.)
                         elif action == "settings":
@@ -857,6 +878,7 @@ def main():
                                 camera = pygame.Vector2()
 
                                 menu.sounds.play_horde()
+                                level_transition.start(level_index + 1)
 
                             else:
                                 player.play_action("reload")
@@ -885,7 +907,7 @@ def main():
         # ACTUALIZAR Y DIBUJAR JUEGO
         # --------------------------------
 
-        if playing and not victory and not paused:
+        if playing and not victory and not paused and not level_transition.active:
 
             keys = pygame.key.get_pressed()
 
@@ -1023,6 +1045,20 @@ def main():
 
             if not player.alive:
                 menu.sounds.stop_horde()
+
+            # Una vida se descuenta cuando termina la animación de muerte.
+            # Se conserva el mismo nivel: enemigos eliminados y suministros
+            # recogidos permanecen tal como estaban.
+            if player.dead_done and not player.death_processed:
+                player.death_processed = True
+                player.lives = max(0, player.lives - 1)
+
+                if player.lives > 0:
+                    player.respawn(level)
+                    bullets.clear()
+                    menu.sounds.play_horde()
+                else:
+                    menu.sounds.stop_horde()
 
             # --------------------------------
             # DETECTAR VICTORIA
@@ -1235,6 +1271,17 @@ def main():
             )
 
         # --------------------------------
+        # ESCENA DURANTE LA TRANSICION
+        # --------------------------------
+
+        elif playing and level_transition.active and not victory:
+
+            draw_scene(
+                canvas, font, big_font, level, player, enemies,
+                bullets, effects, floating, camera
+            )
+
+        # --------------------------------
         # PANTALLA DE VICTORIA
         # --------------------------------
 
@@ -1330,6 +1377,14 @@ def main():
 
             if in_settings:
                 settings_menu.draw(canvas)
+
+        # --------------------------------
+        # TRANSICION ENTRE NIVELES
+        # --------------------------------
+
+        if level_transition.active:
+            level_transition.update(dt)
+            level_transition.draw(canvas)
 
         # --------------------------------
         # ADAPTAR A LA VENTANA

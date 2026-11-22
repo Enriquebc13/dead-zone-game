@@ -35,8 +35,11 @@ class Player:
         # Vida y combate
         self.max_hp = settings.PLAYER_MAX_HP
         self.hp = self.max_hp
+        self.lives = 3
+        self.spawn_pos = pygame.Vector2(pos)
         self.alive = True
         self.dead_done = False
+        self.death_processed = False
         self.invuln = 0.0
 
         # Enemigos del nivel (los asigna main.py cada cuadro); sirve para
@@ -790,9 +793,35 @@ class Player:
         if self.hp <= 0:
             self.die()
 
+    def respawn(self, level):
+        """Reaparece conservando armas, munición y el progreso del nivel."""
+
+        self.pos = level.free_position(self.spawn_pos)
+        self.hp = self.max_hp
+        self.alive = True
+        self.dead_done = False
+        self.death_processed = False
+        self.invuln = max(settings.PLAYER_INVULNERABLE_TIME, 2.0)
+        self.facing = 1
+        self.aim = self.pos + pygame.Vector2(100, 0)
+        self.aim_angle = 0.0
+        self.aim_dir = ""
+        self.fire_dir = ""
+        self.shield_active = False
+        self.shield_sound_played = False
+        self.pending_bullets.clear()
+        self.pending_effects.clear()
+        self.pending_melee = False
+        self.axe_hit_done = False
+        self.state = "idle"
+        self.anim_key, self.anim = self._rest_anim()
+        self.anim.reset()
+        self.sounds.stop_footsteps()
+
     def die(self):
 
         self.alive = False
+        self.death_processed = False
         self.shield_active = False
 
         self.pending_bullets.clear()

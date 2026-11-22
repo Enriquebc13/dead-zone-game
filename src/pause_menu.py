@@ -173,6 +173,14 @@ class PauseMenu:
         title = self.title_font.render("PAUSA", True, (105, 225, 125))
         canvas.blit(title, title.get_rect(center=(cx, panel.top + 52)))
 
+        remaining = sum(1 for enemy in enemies if enemy.alive)
+        status = self.small_font.render(
+            f"VIDAS: {player.lives}     ENEMIGOS RESTANTES: {remaining}",
+            True,
+            (245, 220, 150)
+        )
+        canvas.blit(status, status.get_rect(center=(cx, panel.top + 82)))
+
         for i, (rect, (action, label)) in enumerate(
             zip(rects, self.ITEMS)
         ):
@@ -223,8 +231,9 @@ class PauseMenu:
             ("TIEMPO", f"{minutes:02}:{seconds:02}"),
             ("ENEMIGOS ELIMINADOS", f"{killed} / {total}"),
             ("ENEMIGOS RESTANTES", str(total - killed)),
+            ("VIDAS RESTANTES", str(player.lives)),
             (
-                "VIDA",
+                "SALUD ACTUAL",
                 f"{round(player.hp)} / {player.max_hp}"
             ),
             (
