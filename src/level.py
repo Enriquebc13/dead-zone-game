@@ -33,6 +33,8 @@ class Level:
         self.collisions = []
         self.player_start = pygame.Vector2(self.width / 2, self.height / 2)
         self.zombie_spawns = []
+        self.patrol_routes = {}
+        self.waypoint_routes = {}
         self.exit_rect = None
         self.pickups = []
 
@@ -53,11 +55,26 @@ class Level:
                         self.player_start = pygame.Vector2(obj.x, obj.y)
                     elif obj.name == "zombie":
                         self.zombie_spawns.append(pygame.Vector2(obj.x, obj.y))
+                    elif obj.name.startswith("patrol_"):
+                        # Nombres esperados: patrol_1_a / patrol_1_b
+                        parts = obj.name.split("_")
+                        if len(parts) == 3 and parts[1].isdigit():
+                            self.patrol_routes.setdefault(int(parts[1]) - 1, {})[parts[2]] = pygame.Vector2(obj.x, obj.y)
+                    elif obj.name.startswith("waypoint_"):
+                        # Nombres esperados: waypoint_3_1, waypoint_3_2...
+                        parts = obj.name.split("_")
+                        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+                            self.waypoint_routes.setdefault(int(parts[1]) - 1, []).append(
+                                (int(parts[2]), pygame.Vector2(obj.x, obj.y))
+                            )
                     elif obj.name == "salida":
                         self.exit_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
                     elif obj.name in collectible:
                         col, row = int(obj.x // self.tile_w), int(obj.y // self.tile_h)
                         self.pickups.append(Pickup(obj.name, col, row, self.tile_w, None))
+
+        for enemy_index, points in self.waypoint_routes.items():
+            self.waypoint_routes[enemy_index] = [point for _, point in sorted(points, key=lambda item: item[0])]
 
         # El tile del suministro se dibuja aparte (para poder quitarlo al recogerlo)
         skip = set()

@@ -31,7 +31,38 @@ def start_level(index, sounds):
 
     for i, spawn in enumerate(level.zombie_spawns):
         kind = types[min(i, len(types) - 1)]
-        enemies.append(Enemy(kind, spawn, level))
+        patrol_type = "none"
+        patrol_points = None
+
+        # Los seis enemigos del nivel 1 se dividen en tres comportamientos.
+        # Los demás niveles conservan su comportamiento anterior.
+        if index == 0 and i < 6:
+            if i in (0, 1):
+                patrol_type = "ab"
+                route = level.patrol_routes.get(i, {})
+                patrol_points = [route[key] for key in ("a", "b") if key in route]
+            elif i in (2, 3):
+                patrol_type = "waypoints"
+                patrol_points = level.waypoint_routes.get(i, [])
+            else:
+                patrol_type = "states"
+                # La máquina de estados patrulla alrededor de su posición inicial.
+                patrol_points = [spawn + pygame.Vector2(-48, 0), spawn + pygame.Vector2(48, 0)]
+
+        # En el nivel 2 los enemigos se organizan en tres grupos de horda.
+        # Cada grupo despierta cuando uno de sus integrantes detecta al jugador.
+        horde_group = None
+        if index == 1:
+            if i in (0, 1, 6, 9):
+                horde_group = 1  # zona oeste
+            elif i in (2, 3, 10, 11):
+                horde_group = 2  # zona central
+            elif i in (4, 5, 7, 8):
+                horde_group = 3  # zona este
+
+        enemies.append(
+            Enemy(kind, spawn, level, patrol_type, patrol_points, horde_group)
+        )
 
     return level, player, enemies
 

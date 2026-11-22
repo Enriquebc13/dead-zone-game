@@ -105,6 +105,19 @@
   <object id="23" name="botiquin" x="688" y="224">
    <point/>
   </object>
+  <!-- Rutas de patrullaje del nivel 1: enemigo 1 y 2 (A <-> B) -->
+  <object id="25" name="patrol_1_a" x="490" y="440"><point/></object>
+  <object id="26" name="patrol_1_b" x="630" y="440"><point/></object>
+  <object id="27" name="patrol_2_a" x="640" y="380"><point/></object>
+  <object id="28" name="patrol_2_b" x="755" y="380"><point/></object>
+  <!-- Waypoints del enemigo 3 -->
+  <object id="29" name="waypoint_3_1" x="850" y="440"><point/></object>
+  <object id="30" name="waypoint_3_2" x="930" y="500"><point/></object>
+  <object id="31" name="waypoint_3_3" x="850" y="540"><point/></object>
+  <!-- Waypoints del enemigo 4 -->
+  <object id="32" name="waypoint_4_1" x="970" y="380"><point/></object>
+  <object id="33" name="waypoint_4_2" x="1080" y="440"><point/></object>
+  <object id="34" name="waypoint_4_3" x="1040" y="520"><point/></object>
   <object id="24" name="salida" x="1184" y="320" width="96" height="160"/>
  </objectgroup>
  <layer id="2" name="decoracion" width="40" height="24" locked="1">

@@ -35,7 +35,8 @@ def _load_sprites(kind):
 class Enemy:
     """Enemigo genérico: el tipo (perro, corredor, normal, tanque) viene de settings."""
 
-    def __init__(self, kind, pos, level=None):
+    def __init__(self, kind, pos, level=None, patrol_type="none", patrol_points=None,
+                 horde_group=None):
         self.kind = kind
         self.cfg = settings.ENEMY_TYPES[kind]
         self.sprites = _load_sprites(kind)
@@ -44,6 +45,20 @@ class Enemy:
         if level is not None:
             pos = level.free_position(pos, self.cfg["foot"])
         self.pos = pos
+        self.home = pos.copy()
+        self.patrol_type = patrol_type
+        self.patrol_points = [pygame.Vector2(point) for point in (patrol_points or [])]
+        if self.patrol_type == "ab" and len(self.patrol_points) < 2:
+            self.patrol_points = [self.home + pygame.Vector2(-70, 0), self.home + pygame.Vector2(70, 0)]
+        if self.patrol_type == "waypoints" and not self.patrol_points:
+            self.patrol_points = [self.home.copy()]
+        self.patrol_index = 1 if self.patrol_type in ("ab", "waypoints") else 0
+        self.horde_group = horde_group
+        self.horde_link_radius = 550
+        self.ai_state = "PATROL" if patrol_type == "states" else "PATROL"
+        self.alert_timer = 0.0
+        self.lost_sight_timer = 0.0
+        self.returning = False
 
         self.max_hp = self.cfg["hp"]
         self.hp = self.max_hp
@@ -117,6 +132,9 @@ class Enemy:
 
         self.hp -= amount
         self.aggro = True
+        if self.patrol_type == "states":
+            self.ai_state = "ALERT"
+            self.alert_timer = 0.45
 
         if self.hp <= 0:
             self.hp = 0
@@ -168,6 +186,35 @@ class Enemy:
     # ACTUALIZAR
     # --------------------------------
 
+    def _move_toward(self, target, dt, level, enemies, speed=None):
+        target = pygame.Vector2(target)
+        delta = target - self.pos
+        distance = delta.length()
+        if distance <= 3:
+            return True
+        self.facing = 1 if delta.x > 0 else -1 if delta.x < 0 else self.facing
+        direction = delta.normalize()
+        direction += self._separation(enemies) * 0.6
+        if direction.length_squared():
+            direction = direction.normalize()
+        step = direction * (speed or self.cfg["speed"]) * dt
+        self._move(step, level)
+        return self.pos.distance_to(target) <= 8
+
+    def _patrol(self, dt, level, enemies):
+        if not self.patrol_points:
+            self._set_state("idle")
+            self._advance(dt, loop=True)
+            return
+        target = self.patrol_points[self.patrol_index]
+        if self._move_toward(target, dt, level, enemies, self.cfg["speed"] * 0.65):
+            if self.patrol_type == "ab":
+                self.patrol_index = 1 - self.patrol_index
+            else:
+                self.patrol_index = (self.patrol_index + 1) % len(self.patrol_points)
+        self._set_state("walk")
+        self._advance(dt, loop=True)
+
     def update(self, dt, player, level, enemies, sounds=None):
         # Muerto: reproducir la caída y quedarse en el último cuadro
         if not self.alive:
@@ -181,14 +228,62 @@ class Enemy:
         to_player = player.pos - self.pos
         dist = to_player.length()
 
-        # Detección
+        # Detección y lógica de IA
         if player.alive:
-            if not self.aggro and dist <= self.cfg["detect"]:
-                self.aggro = True
-                if sounds:
-                    sounds.play_zombie("growl")
+            if not self.aggro:
+                detected_player = dist <= self.cfg["detect"]
+                detected_ally = False
+
+                # En el nivel 2, al detectar al jugador un zombi puede alertar
+                # a los integrantes cercanos de su mismo grupo.
+                if not detected_player and self.horde_group is not None:
+                    detected_ally = any(
+                        other is not self
+                        and other.alive
+                        and other.horde_group == self.horde_group
+                        and other.aggro
+                        and self.pos.distance_to(other.pos) <= self.horde_link_radius
+                        for other in enemies
+                    )
+
+                if detected_player or detected_ally:
+                    self.aggro = True
+                    if sounds:
+                        sounds.play_zombie("growl")
+                    if self.patrol_type == "states":
+                        self.ai_state = "ALERT"
+                        self.alert_timer = 0.45
+            if self.patrol_type == "states" and self.ai_state in ("CHASE", "ATTACK"):
+                if dist > self.cfg["detect"] * 1.35:
+                    self.lost_sight_timer += dt
+                    if self.lost_sight_timer >= 2.5:
+                        self.aggro = False
+                        self.ai_state = "RETURN"
+                else:
+                    self.lost_sight_timer = 0.0
         else:
             self.aggro = False
+            if self.patrol_type == "states":
+                self.ai_state = "RETURN"
+
+        if self.patrol_type == "states":
+            if self.ai_state == "ALERT":
+                self.alert_timer -= dt
+                self._set_state("idle")
+                self._advance(dt, loop=True)
+                if self.alert_timer <= 0:
+                    self.ai_state = "CHASE"
+                return
+            if self.ai_state == "RETURN" and not self.aggro:
+                if self.pos.distance_to(self.home) <= 9:
+                    self.ai_state = "PATROL"
+                    self.patrol_index = 1 if len(self.patrol_points) > 1 else 0
+                else:
+                    self._set_state("walk")
+                    self._move_toward(self.home, dt, level, enemies, self.cfg["speed"])
+                    self._advance(dt, loop=True)
+                    return
+
 
         # ---- Golpeado: se detiene un instante
         if self.state == "hurt":
@@ -211,8 +306,13 @@ class Enemy:
 
         # ---- Sin objetivo
         if not self.aggro:
-            self._set_state("idle")
-            self._advance(dt, loop=True)
+            if self.patrol_type in ("ab", "waypoints", "states"):
+                if self.patrol_type == "states" and not self.patrol_points:
+                    self.patrol_points = [self.home + pygame.Vector2(-48, 0), self.home + pygame.Vector2(48, 0)]
+                self._patrol(dt, level, enemies)
+            else:
+                self._set_state("idle")
+                self._advance(dt, loop=True)
             return
 
         # ---- Perseguir / atacar
@@ -220,6 +320,8 @@ class Enemy:
             self.facing = 1 if to_player.x > 0 else -1
 
         in_range = dist <= self.cfg["attack_range"]
+        if self.patrol_type == "states":
+            self.ai_state = "ATTACK" if in_range else "CHASE"
 
         if in_range and self.attack_cd <= 0:
             if self.cfg["anim"]["attack"] is None:
