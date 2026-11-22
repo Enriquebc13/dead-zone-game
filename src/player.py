@@ -1,7 +1,12 @@
+import random
+
 import pygame
 
 import settings
 from src.animation import Animation
+import math
+
+from src.bullet import Bullet
 from src.spritesheet import SpriteSheet
 
 
@@ -16,6 +21,20 @@ class Player:
         self.state = "idle"
 
         self.sounds = sounds
+
+        # Vida y combate
+        self.max_hp = settings.PLAYER_MAX_HP
+        self.hp = self.max_hp
+        self.alive = True
+        self.dead_done = False          # terminó la animación de muerte
+        self.invuln = 0.0               # tiempo restante sin recibir daño
+        self.aim = pygame.Vector2(pos) + (100, 0)   # punto del mouse en el mundo
+        self.pending_bullets = []       # balas nuevas; main las recoge
+        self.pending_effects = []       # efectos (sangre / escudo) nuevos
+        self.aim_angle = 0.0            # giro del torso (+ = hacia arriba)
+        self.fire_frames_done = []
+        self._tilt_cache = {}
+
         self.shield_active = False
         self.shield_sound_played = False
 
@@ -192,6 +211,9 @@ class Player:
         if action not in ("shoot", "reload"):
             return
 
+        if not self.alive:
+            return
+
         # No interrumpir el escudo ni otras acciones
         if self.state in self.action_states:
             return
@@ -206,6 +228,7 @@ class Player:
         if action == "shoot":
 
             self.shoot_sounds_played = []
+            self.fire_frames_done = []
 
         elif action == "reload":
 
@@ -216,6 +239,9 @@ class Player:
     # --------------------------------
 
     def toggle_shield(self):
+
+        if not self.alive:
+            return
 
         # Si el escudo está activo, comenzar a quitarlo
         if self.shield_active:
@@ -255,6 +281,106 @@ class Player:
         self.anim.reset()
 
     # --------------------------------
+    # DISPARO
+    # --------------------------------
+
+    def muzzle(self):
+        """Punta del cañón en el mundo, según el giro actual del torso."""
+        s = settings.SOLDIER_SCALE
+        tip_x, tip_y = settings.GUN_TIP[self.weapon]
+        hip_x, hip_y = settings.TORSO_HIP
+
+        # Vector cadera -> punta del cañón (y positiva hacia arriba)
+        vx = (tip_x - hip_x) * s
+        vy = (hip_y - tip_y) * s
+
+        a = math.radians(self.aim_angle)
+        rx = vx * math.cos(a) - vy * math.sin(a)
+        ry = vx * math.sin(a) + vy * math.cos(a)
+
+        hip_up = (settings.SOLDIER_PIVOT[1] - hip_y) * s
+        return pygame.Vector2(self.pos.x + self.facing * rx,
+                              self.pos.y - hip_up - ry)
+
+    def _update_aim_angle(self, dt):
+        """Ángulo hacia el mouse (+ arriba, - abajo), suavizado y limitado."""
+        s = settings.SOLDIER_SCALE
+        hip_up = (settings.SOLDIER_PIVOT[1] - settings.TORSO_HIP[1]) * s
+        dx = max(1.0, abs(self.aim.x - self.pos.x))
+        dy = (self.pos.y - hip_up) - self.aim.y
+
+        target = math.degrees(math.atan2(dy, dx))
+        limit = settings.AIM_MAX_ANGLE
+        target = max(-limit, min(limit, target))
+
+        self.aim_angle += (target - self.aim_angle) * min(1.0, settings.AIM_SMOOTH * dt)
+
+    def try_shoot(self):
+        """Dispara si no está haciendo otra acción (la usan clic izq. y J)."""
+        if self.alive:
+            self.play_action("shoot")
+
+    def _fire(self):
+        origin = self.muzzle()
+        direction = self.aim - origin
+
+        if direction.length() < 8:
+            direction = pygame.Vector2(self.facing, 0)
+        direction = direction.normalize()
+
+        # La bala sale de la boca del arma; lead_from cubre el tramo
+        # cuerpo -> cañón por si el zombie ya está pegado al soldado
+        lead = pygame.Vector2(self.pos.x, origin.y)
+
+        if self.weapon == "shotgun":
+            spread = settings.SHOTGUN_SPREAD
+            for _ in range(settings.SHOTGUN_PELLETS):
+                self.pending_bullets.append(Bullet(
+                    origin, direction.rotate(random.uniform(-spread, spread)),
+                    settings.SHOTGUN_DAMAGE, settings.SHOTGUN_BULLET_SPEED,
+                    settings.SHOTGUN_RANGE, pellet=True, lead_from=lead))
+        else:
+            spread = settings.RIFLE_SPREAD
+            self.pending_bullets.append(Bullet(
+                origin, direction.rotate(random.uniform(-spread, spread)),
+                settings.RIFLE_DAMAGE, settings.RIFLE_BULLET_SPEED,
+                settings.RIFLE_RANGE, lead_from=lead))
+
+    # --------------------------------
+    # DAÑO Y MUERTE
+    # --------------------------------
+
+    def take_damage(self, amount):
+        if not self.alive or self.invuln > 0:
+            return
+
+        if self.shield_active:
+            amount *= settings.SHIELD_DAMAGE_MULT
+            self.pending_effects.append((
+                "shield",
+                (self.pos.x + self.facing * 30, self.pos.y - 45)
+            ))
+        else:
+            self.pending_effects.append(("blood", (self.pos.x, self.pos.y - 50)))
+
+        self.hp = max(0, self.hp - amount)
+        self.invuln = settings.PLAYER_INVULNERABLE_TIME
+
+        if self.hp <= 0:
+            self.die()
+
+    def die(self):
+        self.alive = False
+        self.shield_active = False
+        self.pending_bullets.clear()
+        self.sounds.stop_footsteps()
+
+        self.state = "dead"
+        self.anim = self.extra_anims["dead"]
+        self.anim.reset()
+        self.dead_sound_played = False
+
+    # --------------------------------
     # COLISIONES
     # --------------------------------
 
@@ -276,6 +402,29 @@ class Player:
     # --------------------------------
 
     def update(self, dt, keys, level):
+
+        self.invuln = max(0.0, self.invuln - dt)
+
+        # MUERTO: reproducir la caída y quedarse en el suelo
+        if not self.alive:
+
+            self.anim.update(dt)
+
+            if (
+                not self.dead_sound_played
+                and self.anim.index >= settings.DEAD_SOUND_FRAME - 1
+            ):
+                self.sounds.play_dead_sound()
+                self.dead_sound_played = True
+
+            if self.anim.finished:
+                self.dead_done = True
+
+            return
+
+        # El soldado siempre mira hacia donde apunta el mouse
+        self.facing = 1 if self.aim.x >= self.pos.x else -1
+        self._update_aim_angle(dt)
 
         # ESCUDO ACTIVO
         if self.shield_active:
@@ -319,6 +468,17 @@ class Player:
 
                         self.sounds.play_shoot_sound(self.weapon)
                         self.shoot_sounds_played.append(i)
+
+                # Las balas salen en los cuadros con fogonazo
+                for i, frame in enumerate(settings.FIRE_FRAMES[self.weapon]):
+
+                    if (
+                        self.anim.index >= frame
+                        and i not in self.fire_frames_done
+                    ):
+
+                        self._fire()
+                        self.fire_frames_done.append(i)
 
             # Sonido de recoger suministro en su fotograma
             elif self.state == "pickup":
@@ -407,9 +567,6 @@ class Player:
 
         if moving:
 
-            if direction.x:
-                self.facing = 1 if direction.x > 0 else -1
-
             speed = (
                 settings.RUN_SPEED
                 if run else settings.WALK_SPEED
@@ -444,6 +601,48 @@ class Player:
         self.anim.update(dt)
 
     # --------------------------------
+    # GIRO DEL TORSO
+    # --------------------------------
+
+    def _tilt_frame(self, frame, flipped, angle):
+        """Piernas fijas; cabeza, torso y arma giran sobre la cadera."""
+        if abs(angle) < 1:
+            return frame
+
+        key = (id(frame), round(angle))
+        cached = self._tilt_cache.get(key)
+        if cached is not None:
+            return cached
+
+        s = settings.SOLDIER_SCALE
+        w, h = frame.get_size()
+        cut = round(settings.TORSO_CUT * s)
+        hx = settings.TORSO_HIP[0] * s
+        hy = settings.TORSO_HIP[1] * s
+
+        if flipped:
+            hx = w - hx
+            angle = -angle
+
+        out = pygame.Surface((w, h), pygame.SRCALPHA)
+
+        legs = frame.copy()
+        legs.fill((0, 0, 0, 0), pygame.Rect(0, 0, w, cut))
+        out.blit(legs, (0, 0))
+
+        upper = frame.subsurface(pygame.Rect(0, 0, w, cut))
+        pad = pygame.Surface((2 * w, 2 * h), pygame.SRCALPHA)
+        ox, oy = round(w - hx), round(h - hy)
+        pad.blit(upper, (ox, oy))
+
+        rotated = pygame.transform.rotate(pad, angle)
+        rect = rotated.get_rect(center=(w, h))
+        out.blit(rotated, (rect.x - ox, rect.y - oy))
+
+        self._tilt_cache[key] = out
+        return out
+
+    # --------------------------------
     # DIBUJAR JUGADOR
     # --------------------------------
 
@@ -452,6 +651,15 @@ class Player:
         frame = self.anim.image(
             flipped=self.facing < 0
         )
+
+        # Giro del torso hacia el mouse (solo mientras camina, está quieto o dispara)
+        if self.state in ("idle", "walk", "run", "shoot", "reload"):
+            frame = self._tilt_frame(frame, self.facing < 0, self.aim_angle)
+
+        # Parpadeo rojo al recibir daño
+        if self.alive and self.invuln > 0 and int(self.invuln * 20) % 2 == 0:
+            frame = frame.copy()
+            frame.fill((120, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
 
         px, py = (
             v * settings.SOLDIER_SCALE

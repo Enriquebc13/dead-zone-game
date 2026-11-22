@@ -36,6 +36,24 @@ class Level:
                 for x, y, image in layer.tiles():
                     self.surface.blit(image, (x * self.tile_w, y * self.tile_h))
 
+    def free_position(self, pos, size=(18, 10), margin=6):
+        """Si pos cae dentro de una colisión, busca el punto libre más cercano."""
+        def ok(p):
+            r = pygame.Rect(0, 0, size[0] + margin, size[1] + margin)
+            r.midbottom = (round(p.x), round(p.y))
+            return (not self.collides(r)
+                    and 0 < p.x < self.width and 0 < p.y < self.height)
+
+        p = pygame.Vector2(pos)
+        if ok(p):
+            return p
+        for radius in range(8, 400, 8):
+            for angle in range(0, 360, 30):
+                q = p + pygame.Vector2(radius, 0).rotate(angle)
+                if ok(q):
+                    return q
+        return p
+
     def collides(self, rect):
         return rect.collidelist(self.collisions) != -1
 

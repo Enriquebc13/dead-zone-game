@@ -17,5 +17,6 @@ class SpriteSheet:
                 frame, (round(self.fw * scale), round(self.fh * scale)))
         return frame
 
-    def get_row(self, row, scale=1.0):
-        return [self.get_frame(c, row, scale) for c in range(self.cols)]
+    def get_row(self, row, scale=1.0, count=None):
+        count = self.cols if count is None else count
+        return [self.get_frame(c, row, scale) for c in range(count)]

@@ -48,6 +48,32 @@ class SoundManager:
             ),
         }
 
+        # Sonidos de zombies (opcionales: se detectan por el nombre del archivo)
+        #   *ataque*         -> golpe del zombie
+        #   *gru* / gr...    -> gruñido al detectar al jugador
+        #   zobie / horda    -> ambiente de la horda (en bucle, bajito)
+        self.zombie_sounds = {}
+        self.zombie_volume_mult = {"horde": 0.35, "attack": 1.0, "growl": 0.7}
+        self.horde_channel = None
+        self._last_growl = 0
+
+        zdir = settings.ZOMBIE_SOUNDS_DIR
+        if zdir.exists():
+            for f in sorted(zdir.glob("*.mp3")):
+                name = f.stem.lower()
+                if "ataque" in name:
+                    key = "attack"
+                elif "gru" in name or name.startswith("gr"):
+                    key = "growl"
+                elif "zobie" in name or "zombie" in name or "horda" in name:
+                    key = "horde"
+                else:
+                    continue
+                try:
+                    self.zombie_sounds[key] = pygame.mixer.Sound(str(f))
+                except pygame.error:
+                    pass
+
         # Volúmenes independientes
         self.menu_volume = 0.5
         self.game_music_volume = 0.20
@@ -67,6 +93,7 @@ class SoundManager:
         # Volumen inicial de efectos del juego
         for sound in self.soldier_sounds.values():
             sound.set_volume(self.effects_volume)
+        self._apply_zombie_volumes()
 
     # --------------------------------
     # CONFIGURACIÓN DE VOLUMEN
@@ -89,6 +116,41 @@ class SoundManager:
 
         for sound in self.soldier_sounds.values():
             sound.set_volume(self.effects_volume)
+
+        self._apply_zombie_volumes()
+
+    def _apply_zombie_volumes(self):
+        for key, sound in self.zombie_sounds.items():
+            sound.set_volume(self.effects_volume * self.zombie_volume_mult[key])
+
+    # --------------------------------
+    # SONIDOS DE ZOMBIES
+    # --------------------------------
+
+    def play_horde(self):
+        sound = self.zombie_sounds.get("horde")
+        if sound is None:
+            return
+        if self.horde_channel is not None and self.horde_channel.get_busy():
+            return
+        self.horde_channel = sound.play(-1)
+
+    def stop_horde(self):
+        if self.horde_channel is not None:
+            self.horde_channel.stop()
+        self.horde_channel = None
+
+    def play_zombie(self, key):
+        sound = self.zombie_sounds.get(key)
+        if sound is None:
+            return
+        # Evitar que 10 zombies gruñan al mismo tiempo
+        if key == "growl":
+            now = pygame.time.get_ticks()
+            if now - self._last_growl < 1500:
+                return
+            self._last_growl = now
+        sound.play()
 
     def play_reload_sound(self, weapon):
         sound_name = f"reload_{weapon}"

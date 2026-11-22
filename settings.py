@@ -105,3 +105,105 @@ DEAD_SOUND_FRAME = 0
 WALK_SPEED = 110                # píxeles por segundo
 RUN_SPEED = 190
 FOOT_SIZE = (18, 10)            # caja de colisión en los pies
+
+# ==============================================================
+# JUGADOR: VIDA Y ARMAS
+# ==============================================================
+PLAYER_MAX_HP = 100
+PLAYER_INVULNERABLE_TIME = 0.6   # segundos sin recibir daño tras un golpe
+SHIELD_DAMAGE_MULT = 0.25        # con el escudo activo recibe solo el 25 %
+
+# --- Apuntado: el torso gira hacia el mouse (la hoja solo tiene vista de perfil)
+EFFECTS_SHEET = BASE_DIR / "assets" / "sprites" / "effects" / "efectos_spritesheet.png"
+
+AIM_MAX_ANGLE = 50               # grados máximos de giro hacia arriba/abajo
+AIM_SMOOTH = 18                  # qué tan rápido gira (mayor = más rápido)
+TORSO_CUT = 128                  # fila (en la celda de 240x220) donde se separa torso y piernas
+TORSO_HIP = (100, 128)           # punto sobre el que gira el torso
+# Punta del cañón (en píxeles de la celda original) en el cuadro del disparo
+GUN_TIP = {"rifle": (190, 86), "shotgun": (186, 69)}
+# Cuadros de la animación de disparo donde sale la bala (coinciden con el
+# fogonazo dibujado en la hoja)
+FIRE_FRAMES = {"rifle": [3, 5, 7], "shotgun": [3, 7]}
+
+# Rifle: una bala por disparo (la animación dispara 2 veces)
+RIFLE_DAMAGE = 10
+RIFLE_BULLET_SPEED = 1000        # px por segundo
+RIFLE_RANGE = 750
+RIFLE_SPREAD = 1.5               # grados de dispersión
+
+# Escopeta: varios perdigones, mucho daño pero poco alcance
+SHOTGUN_PELLETS = 5
+SHOTGUN_DAMAGE = 7
+SHOTGUN_BULLET_SPEED = 900
+SHOTGUN_RANGE = 380
+SHOTGUN_SPREAD = 9               # grados
+
+# ==============================================================
+# ENEMIGOS
+# ==============================================================
+ENEMIES_DIR = BASE_DIR / "assets" / "sprites" / "enemies"
+ZOMBIE_SOUNDS_DIR = BASE_DIR / "assets" / "sounds" / "zombies"
+
+ENEMY_FRAME_SIZE = (288, 288)
+ENEMY_COLS = 8
+
+# rows: fila de cada animación en la hoja y cuántos cuadros usa
+#   (fila, cuadros).  attack = None -> el enemigo hace daño por contacto
+# scale: tamaño del sprite (el soldado mide ~95 px de alto)
+# pivot: pies dentro de la celda de 288x288
+# foot: caja de colisión con el escenario   hit: caja donde reciben balas
+ENEMY_TYPES = {
+    "perro_infectado": {
+        "sheet": ENEMIES_DIR / "enemigo_perro_infectado.png", "rows": 5,
+        "anim": {"idle": (0, 8), "walk": (1, 8), "attack": (2, 8),
+                 "hurt": (3, 4), "dead": (4, 8)},
+        "fps": {"idle": 8, "walk": 16, "attack": 14, "hurt": 14, "dead": 10},
+        "scale": 0.62, "pivot": (105, 276),
+        "foot": (26, 10), "hit": (52, 46),
+        "speed": 210, "hp": 40, "damage": 8,
+        "attack_range": 40, "attack_cooldown": 0.7, "attack_hit_frame": 4,
+        "detect": 520,
+    },
+    "zombie_corredor": {
+        "sheet": ENEMIES_DIR / "enemigo_zombie_corredor.png", "rows": 5,
+        "anim": {"idle": (0, 8), "walk": (1, 8), "attack": (2, 8),
+                 "hurt": (3, 4), "dead": (4, 8)},
+        "fps": {"idle": 8, "walk": 14, "attack": 12, "hurt": 14, "dead": 10},
+        "scale": 0.62, "pivot": (155, 273),
+        "foot": (18, 10), "hit": (30, 82),
+        "speed": 150, "hp": 50, "damage": 10,
+        "attack_range": 38, "attack_cooldown": 0.9, "attack_hit_frame": 4,
+        "detect": 480,
+    },
+    "zombie_normal": {
+        "sheet": ENEMIES_DIR / "enemigo_zombie_normal.png", "rows": 5,
+        "anim": {"idle": (0, 8), "walk": (1, 8), "attack": (2, 8),
+                 "hurt": (3, 4), "dead": (4, 8)},
+        "fps": {"idle": 8, "walk": 8, "attack": 10, "hurt": 14, "dead": 10},
+        "scale": 0.62, "pivot": (150, 272),
+        "foot": (18, 10), "hit": (30, 80),
+        "speed": 70, "hp": 70, "damage": 12,
+        "attack_range": 36, "attack_cooldown": 1.1, "attack_hit_frame": 4,
+        "detect": 380,
+    },
+    "zombie_tanque": {
+        "sheet": ENEMIES_DIR / "enemigo_zombie_tanque.png", "rows": 4,
+        "anim": {"idle": (0, 8), "walk": (1, 8), "attack": None,
+                 "hurt": (2, 4), "dead": (3, 8)},
+        "fps": {"idle": 8, "walk": 6, "attack": 6, "hurt": 12, "dead": 8},
+        "scale": 0.75, "pivot": (150, 272),
+        "foot": (34, 14), "hit": (72, 110),
+        "speed": 45, "hp": 300, "damage": 25,
+        "attack_range": 58, "attack_cooldown": 1.4, "attack_hit_frame": 0,
+        "detect": 350,
+    },
+}
+
+# Tipo de enemigo por cada punto "zombie" del mapa (en el orden en que
+# aparecen en Tiled).  Si hay menos tipos que puntos se repite el último.
+LEVEL_ENEMY_TYPES = {
+    1: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_normal",
+        "zombie_corredor", "zombie_normal", "zombie_normal", "perro_infectado",
+        "zombie_tanque", "zombie_normal", "zombie_corredor", "zombie_normal"],
+}
