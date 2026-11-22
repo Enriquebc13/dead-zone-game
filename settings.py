@@ -17,6 +17,7 @@ SOLDIER_SHOTGUN_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_s
 SOLDIER_DEAD_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "dead_player.png"
 SOLDIER_PICKUP_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "recoger_suministro.png"
 SOLDIER_AXE_SHEET =   BASE_DIR / "assets" / "sprites" / "soldier" / "ataque_hacha.png"
+SOLDIER_SWITCH_AXE_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "cambiar_arma_hacha.png"
 
 MAPS_DIR = BASE_DIR / "maps"
 LEVELS = [MAPS_DIR / f"mapa_{n}" / f"mapa_{n}.tmx" for n in range(1, 6)]
@@ -69,6 +70,9 @@ SOLDIER_DEAD_SOUND = (
 SOLDIER_AXE_HIT_SOUND = (
     BASE_DIR / "assets" / "sounds" / "soldier" / "golpe_hacha.mp3"
 )
+SOLDIER_VICTORY_SOUND = (
+    BASE_DIR / "assets" / "sounds" / "soldier" / "victory.mp3"
+)
 
 
 # Hoja del soldado: 2400x1540 -> 10 columnas x 7 filas -> celdas de 240x220
@@ -86,6 +90,11 @@ SOLDIER_PICKUP_ROWS = 1
 
 SOLDIER_AXE_COLS = 10
 SOLDIER_AXE_ROWS = 1
+
+SOLDIER_SWITCH_AXE_COLS = 10
+SOLDIER_SWITCH_AXE_ROWS = 1
+SOLDIER_SWITCH_AXE_FRAME_SIZE = (240, 220)   # ajústalo si tu PNG mide distinto
+
 
 ROW_WALK = 0
 ROW_RUN = 1
