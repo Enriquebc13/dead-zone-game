@@ -19,6 +19,11 @@ SOLDIER_PICKUP_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "recoger_su
 SOLDIER_AXE_SHEET =   BASE_DIR / "assets" / "sprites" / "soldier" / "ataque_hacha.png"
 SOLDIER_SWITCH_AXE_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "cambiar_arma_hacha.png"
 
+SOLDIER_WALK_AXE_SHEET = BASE_DIR / "assets" / "sprites" / "soldier" / "caminar_hacha.png"
+SOLDIER_WALK_AXE_COLS = 10
+SOLDIER_WALK_AXE_ROWS = 1
+SOLDIER_WALK_AXE_FRAME_SIZE = (320, 220)
+
 MAPS_DIR = BASE_DIR / "maps"
 LEVELS = [MAPS_DIR / f"mapa_{n}" / f"mapa_{n}.tmx" for n in range(1, 6)]
 
@@ -93,7 +98,7 @@ SOLDIER_AXE_ROWS = 1
 
 SOLDIER_SWITCH_AXE_COLS = 10
 SOLDIER_SWITCH_AXE_ROWS = 1
-SOLDIER_SWITCH_AXE_FRAME_SIZE = (240, 220)   # ajústalo si tu PNG mide distinto
+SOLDIER_SWITCH_AXE_FRAME_SIZE = (320, 220)   # ajústalo si tu PNG mide distinto
 
 
 ROW_WALK = 0
@@ -118,6 +123,8 @@ ANIMATION_FPS = {
     "dead": 10,
     "pickup": 12,
     "axe": 12,
+    "switch_axe": 14,
+    "walk_axe": 12,
 }
 
 # Fotograma en el que se reproduce el sonido del escudo

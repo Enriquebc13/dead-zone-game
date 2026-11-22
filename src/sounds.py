@@ -49,6 +49,9 @@ class SoundManager:
             "axe": pygame.mixer.Sound(
                 str(settings.SOLDIER_AXE_HIT_SOUND)
             ),
+            "victory": pygame.mixer.Sound(
+                str(settings.SOLDIER_VICTORY_SOUND)
+            ),
         }
 
         # Sonidos de zombies (opcionales: se detectan por el nombre del archivo)
@@ -218,6 +221,8 @@ class SoundManager:
     
     def play_axe_sound(self):
         self.soldier_sounds["axe"].play()
+    def play_victory_sound(self):
+        self.soldier_sounds["victory"].play()
 
     # --------------------------------
     # PASOS DEL SOLDADO

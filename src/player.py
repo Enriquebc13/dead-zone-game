@@ -1,4 +1,3 @@
-
 import random
 import pygame
 import settings
@@ -88,7 +87,32 @@ class Player:
                 "axe",
                 frame_size=(320, 220)
             ),
+
+            # Animación al sacar el hacha
+            "switch_axe": self._build_extra(
+                settings.SOLDIER_SWITCH_AXE_SHEET,
+                settings.SOLDIER_SWITCH_AXE_COLS,
+                settings.SOLDIER_SWITCH_AXE_ROWS,
+                "switch_axe",
+                frame_size=settings.SOLDIER_SWITCH_AXE_FRAME_SIZE
+            ),
+
+            # Caminar con el hacha equipada (en bucle)
+            "walk_axe": self._build_extra(
+                settings.SOLDIER_WALK_AXE_SHEET,
+                settings.SOLDIER_WALK_AXE_COLS,
+                settings.SOLDIER_WALK_AXE_ROWS,
+                "walk_axe",
+                frame_size=settings.SOLDIER_WALK_AXE_FRAME_SIZE,
+                loop=True
+            ),
         }
+
+        # Reposo con hacha: primer cuadro de la caminata
+        self.extra_anims["idle_axe"] = Animation(
+            [self.extra_anims["walk_axe"].frames[0]],
+            settings.ANIMATION_FPS["idle"]
+        )
 
         self.anim_key = "idle"
         self.anim = self.anims[self.weapon]["idle"]
@@ -101,7 +125,8 @@ class Player:
             "remove_shield",
             "dead",
             "pickup",
-            "axe"
+            "axe",
+            "switch_axe"
         )
 
     # --------------------------------
@@ -191,7 +216,8 @@ class Player:
         cols,
         rows,
         animation_name,
-        frame_size=None
+        frame_size=None,
+        loop=False
     ):
 
         if frame_size is None:
@@ -207,7 +233,7 @@ class Player:
         return Animation(
             sheet.get_row(0, settings.SOLDIER_SCALE),
             settings.ANIMATION_FPS[animation_name],
-            loop=False
+            loop=loop
         )
 
     # --------------------------------
@@ -242,6 +268,19 @@ class Player:
             self.axe_sound_played = False
 
     # --------------------------------
+    # REPOSO SEGÚN EL ARMA EQUIPADA
+    # --------------------------------
+
+    def _rest_anim(self):
+        """Clave y animación de reposo según el arma equipada."""
+
+        if self.equipped == "axe":
+            return "idle_axe", self.extra_anims["idle_axe"]
+
+        key = "idle" + self.aim_dir
+        return key, self.anims[self.weapon][key]
+
+    # --------------------------------
     # CAMBIAR ARMA
     # --------------------------------
 
@@ -256,11 +295,20 @@ class Player:
         if self.state in self.action_states:
             return
 
-        new_anim = self.anims[weapon][self.anim_key]
+        key = self.anim_key
 
-        new_anim.index = self.anim.index
-        new_anim.timer = self.anim.timer
+        # Si la animación actual no existe en la otra arma
+        # (por ejemplo walk_axe), usar el reposo
+        if key not in self.anims[weapon]:
+            key = "idle" + self.aim_dir
 
+        new_anim = self.anims[weapon][key]
+
+        if key == self.anim_key:
+            new_anim.index = self.anim.index
+            new_anim.timer = self.anim.timer
+
+        self.anim_key = key
         self.weapon = weapon
         self.anim = new_anim
 
@@ -502,10 +550,6 @@ class Player:
             ))
 
     # --------------------------------
-    # DAÑO Y MUERTE
-    # --------------------------------
-
-    # --------------------------------
     # ARMAS, MUNICIÓN Y SUMINISTROS
     # --------------------------------
 
@@ -524,10 +568,15 @@ class Player:
         ):
             return
 
+        previous = self.equipped
         self.equipped = slot
 
         if slot in self.anims:
             self.set_weapon(slot)
+
+        # Animación al sacar el hacha (solo si no está haciendo otra acción)
+        if slot == "axe" and previous != "axe":
+            self.play_test_animation("switch_axe")
 
     def unlock_weapon(self, weapon):
 
@@ -642,6 +691,10 @@ class Player:
                 targets.append(enemy)
 
         return targets
+
+    # --------------------------------
+    # DAÑO Y MUERTE
+    # --------------------------------
 
     def take_damage(self, amount):
 
@@ -763,7 +816,8 @@ class Player:
             "remove_shield",
             "dead",
             "pickup",
-            "axe"
+            "axe",
+            "switch_axe"
         ):
 
             self.anim.update(dt)
@@ -843,9 +897,7 @@ class Player:
                     self._finish_reload()
 
                 self.state = "idle"
-                self.anim_key = "idle" + self.aim_dir
-
-                self.anim = self.anims[self.weapon][self.anim_key]
+                self.anim_key, self.anim = self._rest_anim()
                 self.anim.reset()
 
             return
@@ -871,20 +923,22 @@ class Player:
         )
 
         moving = direction.length_squared() > 0
+        axe = self.equipped == "axe"
 
         new_state = (
             "run" if run else "walk"
         ) if moving else "idle"
 
-        new_key = (
-            new_state + self.aim_dir
-            if new_state == "idle"
-            else new_state
-        )
+        if moving:
+            new_key = "walk_axe" if axe else new_state
+            new_anim = (
+                self.extra_anims["walk_axe"] if axe
+                else self.anims[self.weapon][new_state]
+            )
+        else:
+            new_key, new_anim = self._rest_anim()
 
         if new_key != self.anim_key:
-
-            new_anim = self.anims[self.weapon][new_key]
 
             if (
                 new_state in ("walk", "run")

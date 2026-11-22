@@ -1,4 +1,3 @@
-
 import sys
 import pygame
 
@@ -744,6 +743,12 @@ def main():
 
                 menu.sounds.stop_horde()
                 menu.sounds.stop_footsteps()
+
+                # Bajar la música del nivel para que se oiga el jingle
+                pygame.mixer.music.fadeout(600)
+
+                # Sonido de victoria (solo una vez, por el "not victory")
+                menu.sounds.play_victory_sound()
 
             # --------------------------------
             # CAMARA
