@@ -31,6 +31,7 @@ class Level:
         self.height = self.tmx.height * self.tile_h
         self.name = self.tmx.properties.get("nombre", "")
         self._badge_font = None
+        self._ui_font = None
         self.dark_ambience = bool(self.tmx.properties.get("ambiente_oscuro", False))
 
         self.collisions = []
@@ -40,6 +41,16 @@ class Level:
         self.waypoint_routes = {}
         self.exit_rect = None
         self.pickups = []
+
+        # Reja con palanca (nivel 4). gate_anim va de 0 (cerrada) a 1 (abierta);
+        # la colisión de la reja solo desaparece cuando termina la animación.
+        self.gate_rect = None
+        self.gate_open = False
+        self.gate_opening = False
+        self.gate_anim = 0.0
+        self.lever_pos = None
+        self.lever_ready = False      # main.py lo activa al despejar la primera calle
+        self.signs = []               # (posición, líneas de texto)
 
         # Solo lo que está en LEVEL_COLLECTIBLES se puede recoger;
         # el resto de objetos del mapa se queda como adorno
@@ -72,6 +83,13 @@ class Level:
                             )
                     elif obj.name == "salida":
                         self.exit_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
+                    elif obj.name == "reja":
+                        self.gate_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
+                    elif obj.name == "palanca":
+                        self.lever_pos = pygame.Vector2(obj.x, obj.y)
+                    elif obj.name == "letrero":
+                        text = str(obj.properties.get("texto", "BAJA LA PALANCA"))
+                        self.signs.append((pygame.Vector2(obj.x, obj.y), text.split("|")))
                     elif obj.name in collectible:
                         col, row = int(obj.x // self.tile_w), int(obj.y // self.tile_h)
                         self.pickups.append(Pickup(obj.name, col, row, self.tile_w, None))
@@ -127,8 +145,111 @@ class Level:
                     return q
         return p
 
+    # --------------------------------
+    # REJA Y PALANCA
+    # --------------------------------
+
+    GATE_TIME = 1.6   # segundos que tarda en abrirse la reja
+
+    def near_lever(self, pos, radius=64):
+        return self.lever_pos is not None and pos.distance_to(self.lever_pos) <= radius
+
+    def begin_gate_open(self):
+        """Baja la palanca: arranca la animación. Devuelve True si se accionó."""
+        if self.gate_rect is None or self.gate_open or self.gate_opening:
+            return False
+        self.gate_opening = True
+        return True
+
+    def update_gate(self, dt):
+        if self.gate_opening and not self.gate_open:
+            self.gate_anim = min(1.0, self.gate_anim + dt / self.GATE_TIME)
+            if self.gate_anim >= 1.0:
+                self.gate_open = True
+                self.gate_opening = False
+
     def collides(self, rect):
-        return rect.collidelist(self.collisions) != -1
+        if rect.collidelist(self.collisions) != -1:
+            return True
+        # La reja cerrada bloquea a jugador, enemigos y balas
+        return (self.gate_rect is not None and not self.gate_open
+                and rect.colliderect(self.gate_rect))
+
+    def _font(self):
+        if self._ui_font is None:
+            self._ui_font = pygame.font.Font(None, 20)
+        return self._ui_font
+
+    def _draw_gate(self, screen, camera):
+        gate = self.gate_rect.move(-round(camera.x), -round(camera.y))
+        if gate.right < 0 or gate.left > screen.get_width():
+            return
+
+        # Una vez abierta no se dibuja nada: queda el suelo del paso libre
+        if self.gate_open:
+            return
+
+        # Fondo oscuro del hueco (se ve entre las hojas mientras se abren)
+        pygame.draw.rect(screen, (22, 22, 26), gate)
+
+        # Dos hojas que se recogen hacia los extremos (arriba y abajo)
+        half = gate.height // 2
+        leaf = max(0, round(half * (1.0 - self.gate_anim)))
+        if leaf == 0:
+            return
+        leaves = (
+            pygame.Rect(gate.left, gate.top, gate.width, leaf),
+            pygame.Rect(gate.left, gate.bottom - leaf, gate.width, leaf),
+        )
+        for rect in leaves:
+            pygame.draw.rect(screen, (38, 41, 46), rect)
+            for gy in range(rect.top + 3, rect.bottom, 8):
+                pygame.draw.line(screen, (150, 158, 164), (rect.left, gy), (rect.right - 1, gy), 2)
+            for gx in (rect.left + 5, rect.centerx, rect.right - 6):
+                pygame.draw.line(screen, (190, 198, 204), (gx, rect.top), (gx, rect.bottom), 3)
+            pygame.draw.rect(screen, (215, 220, 225), rect, 2)
+        # Temblor de las hojas mientras se mueve
+        if self.gate_opening:
+            pygame.draw.rect(screen, (255, 200, 80), gate, 1)
+
+    def _draw_lever(self, screen, camera):
+        lx = round(self.lever_pos.x - camera.x)
+        ly = round(self.lever_pos.y - camera.y)
+        pulled = self.gate_opening or self.gate_open
+        pygame.draw.rect(screen, (28, 28, 30), (lx - 16, ly - 6, 32, 20), border_radius=4)
+        pygame.draw.rect(screen, (120, 125, 130), (lx - 16, ly - 6, 32, 20), 2, border_radius=4)
+        tip = (lx + 4, ly + 20) if pulled else (lx + 14, ly - 24)
+        color = (90, 220, 110) if pulled else (230, 170, 45)
+        pygame.draw.line(screen, color, (lx, ly + 4), tip, 5)
+        pygame.draw.circle(screen, color, tip, 5)
+
+        if pulled:
+            text, tcolor = "REJA ABIERTA", (140, 235, 150)
+        elif self.lever_ready:
+            text, tcolor = "E: BAJAR PALANCA", (255, 245, 190)
+        else:
+            text, tcolor = "BLOQUEADA", (230, 120, 110)
+        label = self._font().render(text, True, tcolor)
+        rect = label.get_rect(midtop=(lx, ly + 22))
+        pygame.draw.rect(screen, (10, 10, 12), rect.inflate(8, 4), border_radius=3)
+        screen.blit(label, rect)
+
+    def _draw_sign(self, screen, camera, pos, lines):
+        font = self._font()
+        labels = [font.render(line, True, (255, 245, 190)) for line in lines]
+        w = max(l.get_width() for l in labels) + 18
+        h = 10 + 17 * len(labels)
+        cx, cy = round(pos.x - camera.x), round(pos.y - camera.y)
+        if cx < -w or cx > screen.get_width() + w:
+            return
+        board = pygame.Rect(0, 0, w, h)
+        board.center = (cx, cy)
+        # Poste
+        pygame.draw.rect(screen, (60, 38, 20), (cx - 3, board.bottom, 6, 16))
+        pygame.draw.rect(screen, (75, 48, 24), board, border_radius=4)
+        pygame.draw.rect(screen, (225, 205, 150), board, 2, border_radius=4)
+        for i, label in enumerate(labels):
+            screen.blit(label, label.get_rect(center=(cx, board.top + 5 + 8 + 17 * i)))
 
     def draw(self, screen, camera):
         screen.blit(self.surface, (0, 0),
@@ -137,6 +258,13 @@ class Level:
             shade = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
             shade.fill((8, 12, 24, 92))
             screen.blit(shade, (0, 0))
+
+        if self.gate_rect is not None:
+            self._draw_gate(screen, camera)
+        if self.lever_pos is not None:
+            self._draw_lever(screen, camera)
+        for pos, lines in self.signs:
+            self._draw_sign(screen, camera, pos, lines)
 
         # Suministros que se pueden recoger (con un aro que late)
         pulse = 14 + 3 * math.sin(pygame.time.get_ticks() / 200)

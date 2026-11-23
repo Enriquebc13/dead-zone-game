@@ -252,6 +252,17 @@ LEVEL_ENEMY_TYPES = {
         "zombie_corredor", "zombie_normal", "perro_infectado", "zombie_normal",
         "zombie_corredor", "zombie_normal", "perro_infectado", "zombie_normal",
         "zombie_tanque", "zombie_normal", "zombie_corredor", "zombie_tanque"],
+    # Nivel 4 (zona urbana): 20 enemigos = 8 normales, 6 perros, 4 corredores
+    # y 2 tanques. Orden de los puntos "zombie" del mapa:
+    #   0-4   calle inicial        5-9   encerrados tras la reja
+    #   10-19 zona final
+    4: ["zombie_normal", "zombie_normal", "perro_infectado", "zombie_corredor",
+        "zombie_normal",
+        "zombie_normal", "zombie_normal", "perro_infectado", "perro_infectado",
+        "zombie_tanque",
+        "zombie_normal", "perro_infectado", "zombie_corredor", "zombie_normal",
+        "perro_infectado", "zombie_corredor", "zombie_normal", "perro_infectado",
+        "zombie_corredor", "zombie_tanque"],
 }
 
 # ==============================================================
@@ -289,7 +300,7 @@ LEVEL_COLLECTIBLES = {
     1: ("municion", "botiquin"),
     2: ("municion", "botiquin", "escopeta"),
     3: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
-    4: ("municion", "botiquin", "escopeta"),
+    4: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
     5: ("municion", "botiquin", "escopeta"),
 }
 

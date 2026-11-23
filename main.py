@@ -13,6 +13,52 @@ from src.pause_menu import PauseMenu
 from src.level_transition import LevelTransition
 
 
+# Nivel 4: posiciones (en la lista de enemigos) de cada tramo del recorrido
+STREET_GROUP = range(0, 5)    # calle inicial
+GATE_PEN = range(5, 10)       # encerrados tras la reja
+
+
+def street_cleared(enemies):
+    """True cuando los 5 infectados de la calle inicial ya murieron."""
+    return all(not e.alive for e in enemies[STREET_GROUP.start:STREET_GROUP.stop])
+
+
+def interact_lever(level, player, enemies, floating, sounds):
+    """E junto a la palanca: abre la reja si la primera calle esta despejada."""
+    if not player.alive or not level.near_lever(player.pos):
+        return
+    if level.gate_open or level.gate_opening:
+        return
+
+    if not street_cleared(enemies):
+        message = "ELIMINA A LOS 5 DE LA CALLE"
+    elif level.begin_gate_open():
+        message = "¡LA REJA SE ABRE! BUSCA COBERTURA"
+        # Los encerrados oyen el mecanismo y salen directo hacia el jugador
+        for enemy in enemies[GATE_PEN.start:GATE_PEN.stop]:
+            if enemy.alive:
+                enemy.aggro = True
+        sounds.play_zombie("growl")
+    else:
+        return
+
+    floating.append([message, pygame.Vector2(player.pos.x, player.pos.y - 110), 0.0])
+
+
+def level_objective(level, enemies):
+    """Texto de objetivo del nivel con reja (None si el nivel no tiene)."""
+    if level.gate_rect is None:
+        return None
+    if not street_cleared(enemies):
+        left = sum(1 for e in enemies[STREET_GROUP.start:STREET_GROUP.stop] if e.alive)
+        return f"OBJETIVO: elimina a los infectados de la calle ({left} restantes)"
+    if not (level.gate_opening or level.gate_open):
+        return "OBJETIVO: baja la palanca (E), lejos de la reja, y busca cobertura"
+    if any(e.alive for e in enemies[GATE_PEN.start:GATE_PEN.stop]):
+        return "OBJETIVO: ¡resiste a los infectados que salieron de la reja!"
+    return "OBJETIVO: avanza al este y elimina a todos los infectados"
+
+
 def start_level(index, sounds):
     """Crea el nivel, el jugador y los enemigos de un nivel (0 = nivel 1)."""
     level = Level(settings.LEVELS[index])
@@ -63,6 +109,16 @@ def start_level(index, sounds):
             else:
                 patrol_type = "states"
                 patrol_points = [spawn + pygame.Vector2(-64, 0), spawn + pygame.Vector2(64, 0)]
+
+        # Nivel 4 (zona urbana): 5 infectados patrullan la calle inicial,
+        # 5 quedan encerrados tras la reja (indices 5-9, sin patrulla: esperan
+        # quietos) y los 10 restantes patrullan la zona final.
+        if index == 3 and not GATE_PEN.start <= i < GATE_PEN.stop:
+            patrol_type = "states"
+            patrol_points = [
+                spawn + pygame.Vector2(-48, 0),
+                spawn + pygame.Vector2(48, 0),
+            ]
 
         # En el nivel 2 los enemigos se organizan en tres grupos de horda.
         # Cada grupo despierta cuando uno de sus integrantes detecta al jugador.
@@ -264,6 +320,10 @@ def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
         ),
         (12, 84)
     )
+
+    objective = level_objective(level, enemies)
+    if objective:
+        canvas.blit(font.render(objective, True, (255, 245, 190)), (12, 108))
 
     draw_hotbar(canvas, font, player)
 
@@ -867,6 +927,12 @@ def main():
                             effects = state["effects"]
                             floating = state["floating"]
 
+                        # E = accionar la palanca de la reja (nivel 4)
+                        elif event.key == pygame.K_e and level.lever_pos is not None:
+                            interact_lever(
+                                level, player, enemies, floating, menu.sounds
+                            )
+
                         # 1 = rifle
                         elif event.key == pygame.K_1:
                             player.equip("rifle")
@@ -1023,6 +1089,11 @@ def main():
                     enemies,
                     menu.sounds
                 )
+
+            # Reja del nivel 4: animacion de apertura y palanca habilitada
+            if level.gate_rect is not None:
+                level.lever_ready = street_cleared(enemies)
+                level.update_gate(dt)
 
             # --------------------------------
             # ACTUALIZAR BALAS
