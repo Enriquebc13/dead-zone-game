@@ -52,6 +52,7 @@ class Player:
 
         self.aim_angle = 0.0
         self.aim_dir = ""
+        self._pose_angle = 0
         self.fire_dir = ""
         self.fire_frames_done = []
 
@@ -64,10 +65,17 @@ class Player:
         self.dead_sound_played = False
         self.axe_sound_played = False
 
-        # Animaciones de ambas armas
-        self.anims = {
-            "rifle": self._build(settings.SOLDIER_RIFLE_SHEET),
-            "shotgun": self._build(settings.SOLDIER_SHOTGUN_SHEET),
+        # Animaciones de ambas armas (+ poses de apuntado y punta del cañón)
+        built = {
+            "rifle": self._build(settings.SOLDIER_RIFLE_SHEET, "rifle"),
+            "shotgun": self._build(settings.SOLDIER_SHOTGUN_SHEET, "shotgun"),
+        }
+        self.anims = {w: b[0] for w, b in built.items()}
+        # ángulo -> sufijo de la animación ("" = recto, "_up", "_down", "_a22_5"...)
+        self.aim_poses = {w: b[1] for w, b in built.items()}
+        self.gun_tips = {w: b[2] for w, b in built.items()}
+        self.pose_tol = {
+            w: self._pose_tolerance(b[1]) for w, b in built.items()
         }
 
         # Animaciones adicionales
@@ -141,7 +149,78 @@ class Player:
     # --------------------------------
 
     @staticmethod
-    def _build(sheet_path):
+    def _pose_suffix(angle):
+        """Sufijo de las animaciones de una pose (los 3 viejos se conservan)."""
+
+        if angle == 0:
+            return ""
+        if angle == 45:
+            return "_up"
+        if angle == -45:
+            return "_down"
+
+        return "_a" + f"{angle:g}".replace(".", "_")
+
+    @staticmethod
+    def _pose_tolerance(poses):
+        """Desviación máxima de la bala: nunca más de media separación entre poses."""
+
+        angles = sorted(poses)
+        half = 45.0
+
+        if len(angles) > 1:
+            half = min(b - a for a, b in zip(angles, angles[1:])) / 2
+
+        return min(settings.SHOT_POSE_TOLERANCE, half)
+
+    @staticmethod
+    def _flash_tip(sheet, row, weapon):
+        """Punta del cañón = centro del fogonazo del cuadro de disparo."""
+
+        col = settings.FIRE_FRAMES[weapon][0]
+        raw = sheet.raw_frame(col, row)
+
+        mask = pygame.mask.from_threshold(
+            raw, (250, 175, 55, 255), (25, 45, 60, 255)
+        )
+
+        if mask.count() < 6:
+            return None
+
+        return mask.centroid()
+
+    @staticmethod
+    def _model_tip(weapon, angle):
+        """Punta estimada (círculo alrededor del hombro) si no hay fogonazo."""
+
+        tips = settings.GUN_TIP[weapon]
+        pts = [tips["_down"], tips[""], tips["_up"]]
+        (x1, y1), (x2, y2), (x3, y3) = pts
+
+        d = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+        ux = ((x1 * x1 + y1 * y1) * (y2 - y3)
+              + (x2 * x2 + y2 * y2) * (y3 - y1)
+              + (x3 * x3 + y3 * y3) * (y1 - y2)) / d
+        uy = ((x1 * x1 + y1 * y1) * (x3 - x2)
+              + (x2 * x2 + y2 * y2) * (x1 - x3)
+              + (x3 * x3 + y3 * y3) * (x2 - x1)) / d
+
+        radius = sum(math.hypot(x - ux, y - uy) for x, y in pts) / 3
+        phis = [math.degrees(math.atan2(-(y - uy), x - ux)) for x, y in pts]
+
+        # ángulo de la pose -> ángulo real desde el hombro (interpolado)
+        if angle <= 0:
+            phi = phis[1] + (phis[1] - phis[0]) / 45 * angle
+        else:
+            phi = phis[1] + (phis[2] - phis[1]) / 45 * angle
+
+        rad = math.radians(phi)
+
+        return (ux + radius * math.cos(rad), uy - radius * math.sin(rad))
+
+    @staticmethod
+    def _build(sheet_path, weapon):
+        """Devuelve (animaciones, {ángulo: sufijo}, {sufijo: punta del cañón})."""
 
         sheet = SpriteSheet(
             sheet_path,
@@ -154,23 +233,7 @@ class Player:
         fps = settings.ANIMATION_FPS
         f = settings.IDLE_AIM_FRAME
 
-        return {
-
-            # Reposo apuntando
-            "idle": Animation(
-                [sheet.get_frame(f, settings.ROW_FIRE, s)],
-                fps["idle"]
-            ),
-
-            "idle_up": Animation(
-                [sheet.get_frame(f, settings.ROW_FIRE_UP, s)],
-                fps["idle"]
-            ),
-
-            "idle_down": Animation(
-                [sheet.get_frame(f, settings.ROW_FIRE_DOWN, s)],
-                fps["idle"]
-            ),
+        anims = {
 
             "walk": Animation(
                 sheet.get_row(settings.ROW_WALK, s),
@@ -180,24 +243,6 @@ class Player:
             "run": Animation(
                 sheet.get_row(settings.ROW_RUN, s),
                 fps["run"]
-            ),
-
-            "shoot": Animation(
-                sheet.get_row(settings.ROW_FIRE, s),
-                fps["shoot"],
-                loop=False
-            ),
-
-            "shoot_up": Animation(
-                sheet.get_row(settings.ROW_FIRE_UP, s),
-                fps["shoot"],
-                loop=False
-            ),
-
-            "shoot_down": Animation(
-                sheet.get_row(settings.ROW_FIRE_DOWN, s),
-                fps["shoot"],
-                loop=False
             ),
 
             "shield": Animation(
@@ -212,6 +257,87 @@ class Player:
                 loop=False
             )
         }
+
+        # Caminar con el escudo (y su versión al revés para ir hacia atrás)
+        walk_path = settings.SOLDIER_SHIELD_WALK_SHEETS[weapon]
+
+        if walk_path.exists():
+
+            walk_sheet = SpriteSheet(
+                walk_path, settings.SOLDIER_FRAME_SIZE, 10, 1
+            )
+            frames = walk_sheet.get_row(0, s)
+
+            anims["shield_walk"] = Animation(frames, fps["shield_walk"])
+            anims["shield_walk_back"] = Animation(
+                list(reversed(frames)), fps["shield_walk"]
+            )
+
+        # Poses de apuntado: hoja nueva (todos los ángulos) o las 3 filas viejas
+        poses = {}
+        tips = {}
+        aim_path = settings.SOLDIER_AIM_SHEETS[weapon]
+
+        if aim_path.exists():
+
+            angles = settings.AIM_SHEET_ANGLES
+
+            aim_sheet = SpriteSheet(
+                aim_path,
+                settings.SOLDIER_FRAME_SIZE,
+                settings.SOLDIER_COLS,
+                len(angles)
+            )
+
+            rows = [
+                (row, angle)
+                for row, angle in enumerate(angles)
+                if not aim_sheet.row_is_empty(row)
+            ]
+
+            legacy = False
+
+        else:
+
+            aim_sheet = sheet
+            rows = [
+                (settings.ROW_FIRE_UP, 45),
+                (settings.ROW_FIRE, 0),
+                (settings.ROW_FIRE_DOWN, -45),
+            ]
+            legacy = True
+
+        for row, angle in rows:
+
+            suffix = Player._pose_suffix(angle)
+            frames = aim_sheet.get_row(row, s)
+
+            anims["idle" + suffix] = Animation([frames[f]], fps["idle"])
+            anims["shoot" + suffix] = Animation(
+                frames, fps["shoot"], loop=False
+            )
+
+            poses[angle] = suffix
+
+            if legacy:
+                tip = settings.GUN_TIP[weapon][suffix]
+            else:
+                tip = Player._flash_tip(aim_sheet, row, weapon)
+
+                if tip is None:
+                    tip = settings.GUN_TIP[weapon].get(suffix)
+
+                if tip is None:
+                    tip = Player._model_tip(weapon, angle)
+
+            tips[suffix] = tip
+
+        if 0 not in poses:
+            raise ValueError(
+                f"{aim_path.name}: falta la fila de 0 grados (disparo recto)"
+            )
+
+        return anims, dict(sorted(poses.items())), tips
 
     # --------------------------------
     # CONSTRUIR ANIMACIONES ADICIONALES
@@ -301,6 +427,16 @@ class Player:
 
         if self.state in self.action_states:
             return
+
+        # La otra arma puede tener otras poses: usar la más cercana
+        poses = self.aim_poses[weapon]
+
+        if self._pose_angle not in poses:
+            self._pose_angle = min(
+                poses, key=lambda p: abs(p - self._pose_angle)
+            )
+
+        self.aim_dir = poses[self._pose_angle]
 
         key = self.anim_key
 
@@ -393,6 +529,17 @@ class Player:
 
             shield_frames = self.anims[self.weapon]["shield"].frames
 
+            # Parte del cuadro en que está (si camina, con el escudo levantado)
+            if self.anim_key.startswith("shield_walk"):
+                last = settings.SHIELD_PLANT_FRAME - 1
+            elif self.anim_key == "shield":
+                last = self.anim.index
+            else:
+                last = len(shield_frames) - 1
+
+            shield_frames = shield_frames[:last + 1]
+            self.sounds.stop_footsteps()
+
             self.anim = Animation(
                 list(reversed(shield_frames)),
                 settings.ANIMATION_FPS["shield"],
@@ -425,7 +572,7 @@ class Player:
         """Punta del cañón en el mundo."""
 
         s = settings.SOLDIER_SCALE
-        tip_x, tip_y = settings.GUN_TIP[self.weapon][self.fire_dir]
+        tip_x, tip_y = self.gun_tips[self.weapon][self.fire_dir]
         piv_x, piv_y = settings.SOLDIER_PIVOT
 
         return pygame.Vector2(
@@ -446,7 +593,10 @@ class Player:
 
         target = math.degrees(math.atan2(dy, dx))
 
-        limit = settings.AIM_MAX_ANGLE
+        limit = min(
+            settings.AIM_MAX_ANGLE,
+            max(abs(a) for a in self.aim_poses[self.weapon])
+        )
         target = max(-limit, min(limit, target))
 
         self.aim_angle += (
@@ -457,27 +607,27 @@ class Player:
         self._update_aim_dir()
 
     def _update_aim_dir(self):
+        """Elige la pose más cercana al ángulo del mouse (con histéresis)."""
 
+        poses = self.aim_poses[self.weapon]
         a = self.aim_angle
-        enter, leave = settings.AIM_ENTER, settings.AIM_LEAVE
 
-        d = self.aim_dir
+        cur = self._pose_angle
 
-        if d == "_up" and a < leave:
-            d = ""
+        if cur not in poses:
+            cur = min(poses, key=lambda p: abs(p - cur))
 
-        elif d == "_down" and a > -leave:
-            d = ""
+        best = min(poses, key=lambda p: abs(p - a))
 
-        if d == "":
+        # Solo cambia de pose si la nueva está claramente más cerca
+        if (
+            best != cur
+            and abs(a - best) + settings.AIM_HYSTERESIS < abs(a - cur)
+        ):
+            cur = best
 
-            if a > enter:
-                d = "_up"
-
-            elif a < -enter:
-                d = "_down"
-
-        self.aim_dir = d
+        self._pose_angle = cur
+        self.aim_dir = poses[cur]
 
     def try_shoot(self):
 
@@ -507,13 +657,20 @@ class Player:
         elif "axe" in self.unlocked:
             self.play_action("axe")
 
-    POSE_ANGLES = {"": 0, "_up": 45, "_down": -45}
+    def _suffix_angle(self, suffix):
+        """Ángulo (grados) de la pose cuyo sufijo es `suffix`."""
+
+        for angle, sfx in self.aim_poses[self.weapon].items():
+            if sfx == suffix:
+                return angle
+
+        return 0
 
     def _limit_to_pose(self, direction):
         """Limita la dirección del tiro a la pose que se ve en pantalla."""
 
-        pose = self.POSE_ANGLES[self.fire_dir]
-        tol = getattr(settings, "SHOT_POSE_TOLERANCE", 10)
+        pose = self._suffix_angle(self.fire_dir)
+        tol = self.pose_tol[self.weapon]
 
         angle = math.degrees(
             math.atan2(-direction.y, direction.x * self.facing)
@@ -813,6 +970,7 @@ class Player:
         self.aim = self.pos + pygame.Vector2(100, 0)
         self.aim_angle = 0.0
         self.aim_dir = ""
+        self._pose_angle = 0
         self.fire_dir = ""
         self.shield_active = False
         self.shield_sound_played = False
@@ -926,6 +1084,81 @@ class Player:
         self._move(direction, speed, dt, level)
 
     # --------------------------------
+    # ESCUDO ACTIVO: QUIETO O CAMINANDO
+    # --------------------------------
+
+    def _update_shield(self, dt, keys, level):
+        """Con el escudo activo se camina más lento en cualquier dirección.
+
+        El soldado sigue de perfil hacia el mouse; si camina contra su frente
+        (hacia atrás) la animación se reproduce al revés. Al detenerse vuelve
+        a plantar el escudo."""
+
+        anims = self.anims[self.weapon]
+        direction, _run, moving = self._read_movement(keys)
+
+        # Mientras sube el escudo (primeros cuadros) todavía no se mueve
+        raised = (
+            self.anim_key != "shield"
+            or self.anim.index >= settings.SHIELD_MOVE_MIN_FRAME
+        )
+
+        if moving and raised and "shield_walk" in anims:
+
+            backwards = (
+                direction.x != 0
+                and (direction.x > 0) != (self.facing > 0)
+            )
+
+            key = "shield_walk_back" if backwards else "shield_walk"
+
+            if key != self.anim_key:
+
+                new = anims[key]
+
+                if self.anim_key in ("shield_walk", "shield_walk_back"):
+                    # mantiene la zancada al cambiar de sentido
+                    new.index = len(new.frames) - 1 - self.anim.index
+                    new.timer = self.anim.timer
+                    new.finished = False
+                else:
+                    new.reset()
+
+                self.anim_key = key
+                self.anim = new
+
+            speed = settings.WALK_SPEED * settings.SHIELD_MOVE_MULT
+
+            self.sounds.play_footsteps("walk")
+            self._move(direction, speed, dt, level)
+            self.anim.update(dt)
+
+            return
+
+        # Quieto: planta el escudo de nuevo
+        if self.anim_key in ("shield_walk", "shield_walk_back"):
+
+            self.anim = anims["shield"]
+            self.anim.reset()
+            self.anim.index = min(
+                settings.SHIELD_PLANT_FRAME, len(self.anim.frames) - 1
+            )
+            self.anim_key = "shield"
+            self.shield_sound_played = False
+
+        self.sounds.stop_footsteps()
+        self.anim.update(dt)
+
+        if (
+            self.anim_key == "shield"
+            and not self.shield_sound_played
+            and self.anim.index >= settings.SHIELD_SOUND_FRAME - 1
+        ):
+
+            self.sounds.play_shield_sound()
+            self.shield_sound_played = True
+
+    # --------------------------------
     # ACTUALIZAR JUGADOR
     # --------------------------------
 
@@ -956,19 +1189,10 @@ class Player:
 
         self._update_aim_angle(dt)
 
-        # ESCUDO ACTIVO
+        # ESCUDO ACTIVO (se puede caminar con él)
         if self.shield_active:
 
-            self.anim.update(dt)
-
-            if (
-                not self.shield_sound_played
-                and self.anim.index >= settings.SHIELD_SOUND_FRAME - 1
-            ):
-
-                self.sounds.play_shield_sound()
-                self.shield_sound_played = True
-
+            self._update_shield(dt, keys, level)
             return
 
         # --------------------------------

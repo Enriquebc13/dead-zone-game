@@ -11,6 +11,7 @@ from src.settings_menu import SettingsMenu
 from src.victory_screen import VictoryScreen
 from src.pause_menu import PauseMenu
 from src.level_transition import LevelTransition
+from src import minimap
 
 
 # Nivel 4: posiciones (en la lista de enemigos) de cada tramo del recorrido
@@ -334,6 +335,10 @@ def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
         ),
         (12, 84)
     )
+
+    # Progreso de enemigos eliminados y minimapa
+    minimap.draw_enemy_counter(canvas, font, enemies, (12, 78))
+    minimap.draw_minimap(canvas, font, level, player, enemies)
 
     objective = level_objective(level, enemies)
     if objective:
@@ -1001,6 +1006,10 @@ def main():
 
                         elif event.key == pygame.K_F4:
                             player.play_test_animation("pickup")
+
+                        # M = mostrar / ocultar el minimapa
+                        elif event.key == pygame.K_m:
+                            minimap.toggle()
 
                         # H = atacar con hacha
                         elif event.key == pygame.K_h:

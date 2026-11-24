@@ -20,3 +20,13 @@ class SpriteSheet:
     def get_row(self, row, scale=1.0, count=None):
         count = self.cols if count is None else count
         return [self.get_frame(c, row, scale) for c in range(count)]
+
+    def row_is_empty(self, row):
+        """True si la fila no tiene ningún píxel visible (fila sin dibujar)."""
+        rect = pygame.Rect(0, row * self.fh, self.fw * self.cols, self.fh)
+        return pygame.mask.from_surface(self.image.subsurface(rect)).count() == 0
+
+    def raw_frame(self, col, row):
+        """Cuadro sin escalar (para analizar píxeles)."""
+        return self.image.subsurface(
+            pygame.Rect(col * self.fw, row * self.fh, self.fw, self.fh))

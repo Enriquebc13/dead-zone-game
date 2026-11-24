@@ -114,7 +114,7 @@ ROW_FIRE_DOWN = 6               # disparo apuntando -45 grados
 IDLE_AIM_FRAME = 2
 # Máxima desviación (grados) entre hacia dónde apunta el arma en el sprite
 # y hacia dónde sale la bala. 0 = la bala sigue exactamente la pose.
-SHOT_POSE_TOLERANCE = 10
+SHOT_POSE_TOLERANCE = 6
 
 ANIMATION_FPS = {
     "idle": 1,
@@ -128,6 +128,7 @@ ANIMATION_FPS = {
     "axe": 12,
     "switch_axe": 14,
     "walk_axe": 12,
+    "shield_walk": 12,
 }
 
 # Fotograma en el que se reproduce el sonido del escudo
@@ -151,7 +152,7 @@ SHIELD_DAMAGE_MULT = 0.25        # con el escudo activo recibe solo el 25 %
 # --- Apuntado: se elige la fila de la hoja (recto / arriba / abajo) según el mouse
 EFFECTS_SHEET = BASE_DIR / "assets" / "sprites" / "effects" / "efectos_spritesheet.png"
 
-AIM_MAX_ANGLE = 45               # grados máximos hacia arriba/abajo (las poses llegan a +-45)
+AIM_MAX_ANGLE = 90               # tope de grados hacia arriba/abajo (se limita a la pose más extrema que exista)
 AIM_SMOOTH = 18                  # qué tan rápido gira (mayor = más rápido)
 AIM_ENTER = 25                   # pasa a la fila arriba/abajo al superar este ángulo
 AIM_LEAVE = 20                   # vuelve a la fila recta al bajar de este ángulo
@@ -325,4 +326,39 @@ AXE_HIT_FRAME = AXE_SOUND_FRAME - 1
 AXE_KNOCKBACK = 22               # empujón al enemigo (px)
 
 SHOOT_MOVE_MULT = 0.6      # velocidad al disparar caminando (1.0 = normal)
-SHOT_POSE_TOLERANCE = 10   # desviación máxima de la bala respecto a la pose
+SHOT_POSE_TOLERANCE = 6    # desviación máxima (grados) de la bala respecto a la pose; se limita a la mitad del paso entre poses
+
+# ==============================================================
+# DISPARO EN TODOS LOS ÁNGULOS (hojas nuevas opcionales)
+# ==============================================================
+# Una hoja por arma, mismas celdas que la del soldado (240x220, 10 columnas),
+# con UNA FILA POR ÁNGULO en el orden de AIM_SHEET_ANGLES (de arriba a abajo).
+# Cada fila es la animación de disparo mirando a la DERECHA (la izquierda se
+# obtiene por espejo). Las filas totalmente vacías se ignoran, así puedes ir
+# dibujando poco a poco. Si el archivo no existe se usan las 3 filas viejas
+# (recto, +45 y -45) de soldado_spritesheet*.png.
+SOLDIER_AIM_SHEETS = {
+    "rifle": BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_disparo.png",
+    "shotgun": BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_disparo_escopeta.png",
+}
+AIM_SHEET_ANGLES = [90, 67.5, 45, 22.5, 0, -22.5, -45, -67.5, -90]
+# Grados extra que debe ganar otra pose para reemplazar a la actual
+# (evita que el arma "parpadee" entre dos poses vecinas)
+AIM_HYSTERESIS = 4
+
+# ==============================================================
+# ESCUDO: CAMINAR CON ÉL
+# ==============================================================
+# Hoja de 10 cuadros (240x220) de caminar con el escudo levantado
+SOLDIER_SHIELD_WALK_SHEETS = {
+    "rifle": BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_escudo_caminar.png",
+    "shotgun": BASE_DIR / "assets" / "sprites" / "soldier" / "soldado_escudo_caminar_escopeta.png",
+}
+SHIELD_MOVE_MULT = 0.55          # velocidad con el escudo (1.0 = caminar normal)
+SHIELD_MOVE_MIN_FRAME = 5        # cuadro de la subida del escudo desde el que ya puede moverse
+SHIELD_PLANT_FRAME = 6           # cuadro desde el que se "planta" el escudo al detenerse
+
+# ==============================================================
+# MINIMAPA
+# ==============================================================
+MINIMAP_SIZE = (220, 120)        # tamaño máximo en pantalla (px); tecla M lo oculta
