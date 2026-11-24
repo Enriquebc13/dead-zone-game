@@ -263,6 +263,19 @@ LEVEL_ENEMY_TYPES = {
         "zombie_normal", "perro_infectado", "zombie_corredor", "zombie_normal",
         "perro_infectado", "zombie_corredor", "zombie_normal", "perro_infectado",
         "zombie_corredor", "zombie_tanque"],
+    # Nivel 5 (estacionamiento): 30 enemigos = 14 normales, 7 perros,
+    # 6 corredores y 3 tanques. Orden de los puntos "zombie" del mapa:
+    #   0-3 entrada   4-9 pasillo norte   10-19 filas centrales
+    #   20-26 zona de peligro   27-29 camino a la salida (2 tanques)
+    5: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_corredor",
+        "zombie_normal", "perro_infectado", "zombie_normal", "zombie_corredor",
+        "zombie_normal", "perro_infectado",
+        "zombie_normal", "zombie_normal", "perro_infectado", "zombie_corredor",
+        "zombie_normal", "perro_infectado", "zombie_corredor", "zombie_normal",
+        "zombie_normal", "perro_infectado",
+        "zombie_normal", "zombie_corredor", "perro_infectado", "zombie_normal",
+        "zombie_tanque", "zombie_normal", "zombie_corredor", "perro_infectado",
+        "zombie_tanque", "zombie_tanque"],
 }
 
 # ==============================================================
@@ -301,7 +314,7 @@ LEVEL_COLLECTIBLES = {
     2: ("municion", "botiquin", "escopeta"),
     3: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
     4: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
-    5: ("municion", "botiquin", "escopeta"),
+    5: ("municion", "municion_rifle", "municion_escopeta", "botiquin", "escopeta"),
 }
 
 # Hacha: golpea en el cuadro AXE_HIT_FRAME de su animación

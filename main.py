@@ -120,6 +120,20 @@ def start_level(index, sounds):
                 spawn + pygame.Vector2(48, 0),
             ]
 
+        # Nivel 5 (estacionamiento): 10 patrullan A<->B, 10 siguen waypoints
+        # y los 10 últimos hacen guardia con máquina de estados.
+        if index == 4:
+            if i < 10:
+                patrol_type = "ab"
+                route = level.patrol_routes.get(i, {})
+                patrol_points = [route[key] for key in ("a", "b") if key in route]
+            elif i < 20:
+                patrol_type = "waypoints"
+                patrol_points = level.waypoint_routes.get(i, [])
+            else:
+                patrol_type = "states"
+                patrol_points = [spawn + pygame.Vector2(-48, 0), spawn + pygame.Vector2(48, 0)]
+
         # En el nivel 2 los enemigos se organizan en tres grupos de horda.
         # Cada grupo despierta cuando uno de sus integrantes detecta al jugador.
         horde_group = None
