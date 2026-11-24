@@ -72,6 +72,10 @@ SOLDIER_DEAD_SOUND = (
     BASE_DIR / "assets" / "sounds" / "soldier" / "game_over.mp3"
 )
 
+SOLDIER_DAMAGE_SOUND = (
+    BASE_DIR / "assets" / "sounds" / "soldier" / "recibir_daño.mp3"
+)
+
 SOLDIER_AXE_HIT_SOUND = (
     BASE_DIR / "assets" / "sounds" / "soldier" / "golpe_hacha.mp3"
 )

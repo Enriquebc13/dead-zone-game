@@ -342,7 +342,7 @@ def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0, game_s
     if game_state is not None:
         canvas.blit(
             font.render(
-                f"PUNTAJE: {game_state.score}    RESTANTES: {game_state.enemies_remaining}",
+                f"PUNTAJE: {game_state.score}",
                 True, (255, 220, 120)
             ),
             (270, 60)

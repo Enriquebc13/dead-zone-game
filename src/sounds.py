@@ -46,6 +46,9 @@ class SoundManager:
             "dead": pygame.mixer.Sound(
                 str(settings.SOLDIER_DEAD_SOUND)
             ),
+            "damage": pygame.mixer.Sound(
+                str(settings.SOLDIER_DAMAGE_SOUND)
+            ),
             "axe": pygame.mixer.Sound(
                 str(settings.SOLDIER_AXE_HIT_SOUND)
             ),
@@ -209,6 +212,10 @@ class SoundManager:
 
     def play_pickup_sound(self):
         self.soldier_sounds["pickup"].play()
+
+    def play_damage_sound(self):
+        """Reproduce el efecto cuando el jugador recibe daño real."""
+        self.soldier_sounds["damage"].play()
 
     def play_dead_sound(self):
         # Cortar los pasos para que no suenen mientras cae

@@ -977,6 +977,9 @@ class Player:
         self.hp = max(0, self.hp - amount)
         self.invuln = settings.PLAYER_INVULNERABLE_TIME
 
+        # El sonido se reproduce una sola vez por impacto válido.
+        self.sounds.play_damage_sound()
+
         if self.hp <= 0:
             self.die()
 
