@@ -150,7 +150,7 @@ class PauseMenu:
     # DIBUJO
     # --------------------------------
 
-    def draw(self, canvas, level, player, enemies, elapsed):
+    def draw(self, canvas, level, player, enemies, elapsed, game_state=None):
 
         width, height = canvas.get_size()
         cx = width // 2
@@ -160,7 +160,7 @@ class PauseMenu:
         canvas.blit(overlay, (0, 0))
 
         if self.show_info:
-            self._draw_info(canvas, level, player, enemies, elapsed)
+            self._draw_info(canvas, level, player, enemies, elapsed, game_state)
             return
 
         panel, rects = self._layout(width, height)
@@ -203,7 +203,7 @@ class PauseMenu:
             text = self.font.render(label, True, color)
             canvas.blit(text, text.get_rect(center=rect.center))
 
-    def _draw_info(self, canvas, level, player, enemies, elapsed):
+    def _draw_info(self, canvas, level, player, enemies, elapsed, game_state=None):
 
         width, height = canvas.get_size()
         cx, cy = width // 2, height // 2
@@ -228,10 +228,19 @@ class PauseMenu:
 
         rows = [
             ("NIVEL", level.name),
-            ("TIEMPO", f"{minutes:02}:{seconds:02}"),
+            ("TIEMPO TOTAL", (
+                f"{int(game_state.elapsed_time // 60):02}:"
+                f"{int(game_state.elapsed_time % 60):02}"
+                if game_state else f"{minutes:02}:{seconds:02}"
+            )),
             ("ENEMIGOS ELIMINADOS", f"{killed} / {total}"),
             ("ENEMIGOS RESTANTES", str(total - killed)),
             ("VIDAS RESTANTES", str(player.lives)),
+            ("PUNTAJE", str(game_state.score if game_state else 0)),
+            ("ENEMIGOS RESTANTES", str(game_state.enemies_remaining if game_state else sum(1 for e in enemies if e.alive))),
+            ("MUERTES", str(game_state.deaths if game_state else 0)),
+            ("OBJETOS RECOLECTADOS", str(game_state.pickups_collected if game_state else 0)),
+            ("MUNICION PERDIDA", str(game_state.objects_lost if game_state else player.objects_lost)),
             (
                 "SALUD ACTUAL",
                 f"{round(player.hp)} / {player.max_hp}"
@@ -251,7 +260,7 @@ class PauseMenu:
                     f"{ammo['mag']} / {ammo['reserve']}"
                 ))
 
-        y = panel.top + 100
+        y = panel.top + 82
 
         for label, value in rows:
 
@@ -270,10 +279,10 @@ class PauseMenu:
                 )
             )
 
-            y += 34
+            y += 24
 
         # Controles
-        y += 8
+        y += 6
 
         pygame.draw.line(
             canvas, (65, 100, 75),
@@ -281,19 +290,19 @@ class PauseMenu:
             (panel.right - 40, y), 2
         )
 
-        y += 18
+        y += 12
 
         heading = self.small_font.render(
             "CONTROLES", True, (105, 225, 125)
         )
         canvas.blit(heading, (panel.left + 40, y))
 
-        y += 30
+        y += 22
 
         for line in self.CONTROLS:
             text = self.tiny_font.render(line, True, (205, 215, 210))
             canvas.blit(text, (panel.left + 40, y))
-            y += 26
+            y += 20
 
         hint = self.tiny_font.render(
             "ESC / ENTER / clic: volver", True, (155, 165, 165)

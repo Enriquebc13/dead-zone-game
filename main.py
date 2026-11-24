@@ -12,6 +12,7 @@ from src.victory_screen import VictoryScreen
 from src.pause_menu import PauseMenu
 from src.level_transition import LevelTransition
 from src import minimap
+from src.game_state import GameState
 
 
 # Nivel 4: posiciones (en la lista de enemigos) de cada tramo del recorrido
@@ -178,7 +179,7 @@ def resolve_melee(player, enemies, effects, level):
         )
 
 
-def collect_pickups(level, player, floating):
+def collect_pickups(level, player, floating, game_state=None):
     """Recoge los suministros que el soldado esté pisando."""
 
     if not player.alive:
@@ -197,6 +198,8 @@ def collect_pickups(level, player, floating):
         # None = no se pudo usar: se queda en el piso
         if message is not None:
             pickup.collected = True
+            if game_state is not None:
+                game_state.register_pickup(pickup.kind)
 
             floating.append([
                 message,
@@ -265,7 +268,7 @@ def draw_hotbar(canvas, font, player):
         x += 158
 
 
-def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
+def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0, game_state=None):
     alive = sum(1 for e in enemies if e.alive)
 
     canvas.blit(
@@ -336,6 +339,15 @@ def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
         (12, 84)
     )
 
+    if game_state is not None:
+        canvas.blit(
+            font.render(
+                f"PUNTAJE: {game_state.score}    RESTANTES: {game_state.enemies_remaining}",
+                True, (255, 220, 120)
+            ),
+            (270, 60)
+        )
+
     # Progreso de enemigos eliminados y minimapa
     minimap.draw_enemy_counter(canvas, font, enemies, (12, 78))
     minimap.draw_minimap(canvas, font, level, player, enemies)
@@ -346,45 +358,47 @@ def draw_hud(canvas, font, big_font, level, player, enemies, elapsed=0.0):
 
     draw_hotbar(canvas, font, player)
 
-    # Pantalla de Game Over
-    if player.dead_done:
-
-        overlay = pygame.Surface(
-            canvas.get_size(),
-            pygame.SRCALPHA
-        )
-
-        overlay.fill((0, 0, 0, 160))
+    # Tablero de Game Over con resumen de la partida.
+    if player.dead_done and player.lives <= 0:
+        overlay = pygame.Surface(canvas.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 210))
         canvas.blit(overlay, (0, 0))
 
-        title = big_font.render(
-            "GAME OVER",
-            True,
-            (220, 40, 40)
-        )
+        cx, cy = canvas.get_width() // 2, canvas.get_height() // 2
+        panel = pygame.Rect(cx - 270, cy - 250, 540, 500)
+        pygame.draw.rect(canvas, (15, 19, 23), panel, border_radius=14)
+        pygame.draw.rect(canvas, (180, 55, 55), panel, 3, border_radius=14)
 
-        hint = font.render(
-            "R: reintentar    ESC: menu",
-            True,
-            (255, 255, 255)
-        )
+        title = big_font.render("GAME OVER", True, (230, 55, 55))
+        canvas.blit(title, title.get_rect(center=(cx, panel.top + 58)))
 
-        cx = canvas.get_width() // 2
+        total_time = game_state.elapsed_time if game_state else elapsed
+        minutes, seconds = divmod(int(total_time), 60)
+        stats = [
+            ("NIVEL ALCANZADO", str(game_state.current_level if game_state else level.name)),
+            ("PUNTAJE TOTAL", str(game_state.score if game_state else 0)),
+            ("ENEMIGOS ELIMINADOS", str(game_state.enemies_killed if game_state else len(enemies) - alive)),
+            ("ENEMIGOS RESTANTES", str(game_state.enemies_remaining if game_state else alive)),
+            ("MUERTES", str(game_state.deaths if game_state else 0)),
+            ("TIEMPO JUGADO", f"{minutes:02d}:{seconds:02d}"),
+            ("OBJETOS RECOLECTADOS", str(game_state.pickups_collected if game_state else 0)),
+            ("MUNICION PERDIDA", str(game_state.objects_lost if game_state else player.objects_lost)),
+        ]
+        y = panel.top + 112
+        for label, value in stats:
+            left = font.render(label, True, (175, 185, 185))
+            right = font.render(value, True, (250, 245, 225))
+            canvas.blit(left, (panel.left + 38, y))
+            canvas.blit(right, right.get_rect(midright=(panel.right - 38, y + 10)))
+            y += 32
 
-        canvas.blit(
-            title,
-            title.get_rect(center=(cx, 300))
-        )
-
-        canvas.blit(
-            hint,
-            hint.get_rect(center=(cx, 370))
-        )
+        hint = font.render("R: reintentar nivel    ESC: volver al menu", True, (255, 255, 255))
+        canvas.blit(hint, hint.get_rect(center=(cx, panel.bottom - 35)))
 
 
 def draw_scene(
     canvas, font, big_font, level, player, enemies,
-    bullets, effects, floating, camera, elapsed=0.0
+    bullets, effects, floating, camera, elapsed=0.0, game_state=None
 ):
     """Dibuja el estado actual del nivel sin actualizarlo (para la pausa)."""
 
@@ -421,7 +435,7 @@ def draw_scene(
             )
         )
 
-    draw_hud(canvas, font, big_font, level, player, enemies, elapsed)
+    draw_hud(canvas, font, big_font, level, player, enemies, elapsed, game_state)
 
 
 def has_next_level(index):
@@ -513,6 +527,7 @@ def main():
     floating = []
 
     level_index = 0
+    game_state = GameState()
 
     # Tiempo de partida
     level_start_time = 0
@@ -647,6 +662,8 @@ def main():
                         menu.stop_music()
 
                         level_index = result
+                        game_state.reset()
+                        game_state.start_level(level_index + 1)
 
                         level, player, enemies = start_level(
                             level_index,
@@ -699,6 +716,7 @@ def main():
                     if result == "next":
 
                         level_index += 1
+                        game_state.start_level(level_index + 1)
 
                         menu.sounds.stop_horde()
                         menu.sounds.stop_footsteps()
@@ -827,6 +845,7 @@ def main():
                             menu.sounds.stop_footsteps()
                             menu.sounds.stop_horde()
 
+                            game_state.start_level(level_index + 1)
                             level, player, enemies = start_level(
                                 level_index,
                                 menu.sounds
@@ -973,6 +992,7 @@ def main():
 
                             if player.dead_done:
 
+                                game_state.start_level(level_index + 1)
                                 level, player, enemies = start_level(
                                     level_index,
                                     menu.sounds
@@ -1030,7 +1050,9 @@ def main():
 
             if player.alive:
                 level_elapsed += dt
+                game_state.update_time(dt)
 
+            game_state.update_player(player)
             keys = pygame.key.get_pressed()
 
             # El jugador necesita saber quiénes lo atacan (escudo)
@@ -1090,7 +1112,8 @@ def main():
             collect_pickups(
                 level,
                 player,
-                floating
+                floating,
+                game_state
             )
 
             # --------------------------------
@@ -1112,6 +1135,8 @@ def main():
                     enemies,
                     menu.sounds
                 )
+                game_state.register_enemy(enemy)
+            game_state.update_enemies(enemies)
 
             # Reja del nivel 4: animacion de apertura y palanca habilitada
             if level.gate_rect is not None:
@@ -1179,10 +1204,19 @@ def main():
             if player.dead_done and not player.death_processed:
                 player.death_processed = True
                 player.lives = max(0, player.lives - 1)
+                lost_ammo = player.apply_death_penalty()
+                game_state.objects_lost += lost_ammo
+                game_state.register_death(player)
 
                 if player.lives > 0:
                     player.respawn(level)
                     bullets.clear()
+                    if lost_ammo:
+                        floating.append([
+                            f"PERDISTE {lost_ammo} MUNICIONES",
+                            pygame.Vector2(player.pos.x, player.pos.y - 110),
+                            0.0
+                        ])
                     menu.sounds.play_horde()
                 else:
                     menu.sounds.stop_horde()
@@ -1393,7 +1427,8 @@ def main():
                 level,
                 player,
                 enemies,
-                level_elapsed
+                level_elapsed,
+                game_state
             )
 
         # --------------------------------
@@ -1404,7 +1439,8 @@ def main():
 
             draw_scene(
                 canvas, font, big_font, level, player, enemies,
-                bullets, effects, floating, camera, level_elapsed
+                bullets, effects, floating, camera, level_elapsed,
+                game_state
             )
 
         # --------------------------------
@@ -1440,7 +1476,8 @@ def main():
                 level,
                 player,
                 enemies,
-                level_elapsed
+                level_elapsed,
+                game_state
             )
 
             # Adaptar posición del mouse al canvas
@@ -1469,7 +1506,8 @@ def main():
                 enemies,
                 victory_elapsed,
                 scaled_mouse,
-                has_next_level(level_index)
+                has_next_level(level_index),
+                game_state
             )
 
         # --------------------------------
@@ -1480,7 +1518,8 @@ def main():
 
             draw_scene(
                 canvas, font, big_font, level, player, enemies,
-                bullets, effects, floating, camera, level_elapsed
+                bullets, effects, floating, camera, level_elapsed,
+                game_state
             )
 
             pause_menu.draw(
@@ -1488,7 +1527,8 @@ def main():
                 level,
                 player,
                 enemies,
-                level_elapsed
+                level_elapsed,
+                game_state
             )
 
             if in_pause_settings:

@@ -239,6 +239,19 @@ ENEMY_TYPES = {
         "attack_range": 58, "attack_cooldown": 1.4, "attack_hit_frame": 0,
         "detect": 350, "knockback": 0.25,
     },
+    "zombie_tanque_boss": {
+        # Hoja nueva Bullking: 8 columnas x 4 filas, cuadros de 192x144.
+        "sheet": ENEMIES_DIR / "enemigo_zombie_tanque_boss.png",
+        "frame_size": (192, 144), "cols": 8, "rows": 4,
+        "anim": {"idle": (0, 8), "walk": (0, 8), "attack": (1, 8),
+                 "hurt": (2, 4), "dead": (3, 8)},
+        "fps": {"idle": 6, "walk": 7, "attack": 9, "hurt": 10, "dead": 6},
+        "scale": 1.7, "pivot": (96, 140),
+        "foot": (68, 24), "hit": (130, 175),
+        "speed": 34, "hp": 850, "damage": 38,
+        "attack_range": 88, "attack_cooldown": 1.65, "attack_hit_frame": 5,
+        "detect": 520, "knockback": 0.12,
+    },
 }
 
 # Tipo de enemigo por cada punto "zombie" del mapa (en el orden en que
@@ -265,9 +278,9 @@ LEVEL_ENEMY_TYPES = {
         "perro_infectado", "zombie_corredor", "zombie_normal", "perro_infectado",
         "zombie_corredor", "zombie_tanque"],
     # Nivel 5 (estacionamiento): 30 enemigos = 14 normales, 7 perros,
-    # 6 corredores y 3 tanques. Orden de los puntos "zombie" del mapa:
+    # 6 corredores, 2 tanques y el jefe Bullking. Orden de los puntos "zombie" del mapa:
     #   0-3 entrada   4-9 pasillo norte   10-19 filas centrales
-    #   20-26 zona de peligro   27-29 camino a la salida (2 tanques)
+    #   20-26 zona de peligro   27-29 camino a la salida (tanque y jefe Bullking)
     5: ["zombie_normal", "zombie_normal", "zombie_normal", "zombie_corredor",
         "zombie_normal", "perro_infectado", "zombie_normal", "zombie_corredor",
         "zombie_normal", "perro_infectado",
@@ -276,7 +289,7 @@ LEVEL_ENEMY_TYPES = {
         "zombie_normal", "perro_infectado",
         "zombie_normal", "zombie_corredor", "perro_infectado", "zombie_normal",
         "zombie_tanque", "zombie_normal", "zombie_corredor", "perro_infectado",
-        "zombie_tanque", "zombie_tanque"],
+        "zombie_tanque", "zombie_tanque_boss"],
 }
 
 # ==============================================================

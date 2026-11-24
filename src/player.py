@@ -25,6 +25,9 @@ class Player:
 
         # Munición por arma de fuego: cargador (mag) y reserva
         self.ammo = {gun: dict(values) for gun, values in settings.AMMO.items()}
+        # Conteo de suministros recogidos durante el nivel/partida.
+        self.inventory = {"botiquin": 0, "municion": 0, "escopeta": 0}
+        self.objects_lost = 0
 
         # Golpe de hacha
         self.axe_hit_done = False
@@ -849,9 +852,29 @@ class Player:
         else:
             return None
 
+        # Registrar suministros para las estadísticas y la penalización al morir.
+        if kind == "botiquin":
+            self.inventory["botiquin"] += 1
+        elif kind == "escopeta":
+            self.inventory["escopeta"] += 1
+        else:
+            self.inventory["municion"] += 1
+
         self._pickup_feedback()
 
         return message
+
+    def apply_death_penalty(self):
+        """Al morir se pierde parte de la munición de reserva, no las armas."""
+        lost = 0
+        for ammo in self.ammo.values():
+            penalty = (ammo["reserve"] + 3) // 4  # 25%, redondeado hacia arriba
+            ammo["reserve"] = max(0, ammo["reserve"] - penalty)
+            lost += penalty
+
+        self.objects_lost += lost
+        self.shield_active = False
+        return lost
 
     def _pickup_feedback(self):
 

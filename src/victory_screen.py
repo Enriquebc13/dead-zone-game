@@ -55,7 +55,7 @@ class VictoryScreen:
 
     def draw(
         self, canvas, level, player, enemies, elapsed_time, mouse_pos,
-        has_next=False
+        has_next=False, game_state=None
     ):
         """Dibuja el tablero con los resultados de la partida."""
 
@@ -128,6 +128,8 @@ class VictoryScreen:
                 f"{round(player.hp)} / {player.max_hp}"
             ),
             ("MUNICION RESTANTE", str(total_ammo)),
+            ("PUNTAJE", str(game_state.score if game_state else 0)),
+            ("MUERTES", str(game_state.deaths if game_state else 0)),
         ]
 
         start_y = cy - 85
@@ -148,7 +150,7 @@ class VictoryScreen:
                 )
             )
 
-            start_y += 38
+            start_y += 31
 
         # Botones
         self._get_buttons(canvas)

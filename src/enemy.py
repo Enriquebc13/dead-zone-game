@@ -15,8 +15,10 @@ def _load_sprites(kind):
 
     cfg = settings.ENEMY_TYPES[kind]
     sheet = SpriteSheet(
-        cfg["sheet"], settings.ENEMY_FRAME_SIZE,
-        settings.ENEMY_COLS, cfg["rows"],
+        cfg["sheet"],
+        cfg.get("frame_size", settings.ENEMY_FRAME_SIZE),
+        cfg.get("cols", settings.ENEMY_COLS),
+        cfg["rows"],
     )
 
     sprites = {}
@@ -33,7 +35,7 @@ def _load_sprites(kind):
 
 
 class Enemy:
-    """Enemigo genérico: el tipo (perro, corredor, normal, tanque) viene de settings."""
+    """Enemigo genérico; sus atributos y sprites se definen en settings."""
 
     def __init__(self, kind, pos, level=None, patrol_type="none", patrol_points=None,
                  horde_group=None):
