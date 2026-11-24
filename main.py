@@ -507,8 +507,8 @@ def main():
     menu = Menu()
     settings_menu = SettingsMenu(menu.sounds)
     victory_screen = VictoryScreen()
-    pause_menu = PauseMenu()
-    level_transition = LevelTransition()
+    pause_menu = PauseMenu(menu.sounds)
+    level_transition = LevelTransition(menu.sounds)
 
     # --------------------------------
     # ESTADOS DEL JUEGO
@@ -920,6 +920,11 @@ def main():
                 # --------------------------------
 
                 else:
+
+                    # Rueda del mouse: cambiar entre las armas desbloqueadas.
+                    # Se conservan los controles numéricos 1/2/3.
+                    if event.type == pygame.MOUSEWHEEL:
+                        player.cycle_weapon(event.y)
 
                     if event.type == pygame.KEYDOWN:
 

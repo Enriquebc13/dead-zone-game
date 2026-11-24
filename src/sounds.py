@@ -16,6 +16,12 @@ class SoundManager:
         self.select_level = pygame.mixer.Sound(
             str(settings.MENU_SELECT_SOUND)
         )
+        self.start_game = pygame.mixer.Sound(
+            str(settings.MENU_START_SOUND)
+        )
+        self.pause_select = pygame.mixer.Sound(
+            str(settings.PAUSE_SELECT_SOUND)
+        )
 
         # Sonidos del soldado
         self.soldier_sounds = {
@@ -96,8 +102,11 @@ class SoundManager:
         self.footsteps_channel = None
         self.current_footstep_type = None
 
-        # Sonido del menú independiente
-        self.select_level.set_volume(self.ui_volume)
+        # Los sonidos de interfaz siguen el volumen general del menú.
+        self.ui_volume = self.menu_volume
+        self.select_level.set_volume(self.menu_volume)
+        self.start_game.set_volume(self.menu_volume)
+        self.pause_select.set_volume(self.menu_volume)
 
         # Volumen inicial de efectos del juego
         for sound in self.soldier_sounds.values():
@@ -110,6 +119,12 @@ class SoundManager:
 
     def set_menu_volume(self, volume):
         self.menu_volume = max(0.0, min(1.0, volume))
+        self.ui_volume = self.menu_volume
+
+        # El control "VOLUMEN DEL MENU" afecta música y sonidos de interfaz.
+        self.select_level.set_volume(self.menu_volume)
+        self.start_game.set_volume(self.menu_volume)
+        self.pause_select.set_volume(self.menu_volume)
 
         if self.current_music_type == "menu":
             pygame.mixer.music.set_volume(self.menu_volume)
@@ -202,6 +217,14 @@ class SoundManager:
 
     def play_select_sound(self):
         self.select_level.play()
+
+    def play_start_game_sound(self):
+        """Reproduce el sonido al aparecer el título de transición del nivel."""
+        self.start_game.play()
+
+    def play_pause_select_sound(self):
+        """Reproduce el sonido al cambiar la opción seleccionada en pausa."""
+        self.pause_select.play()
 
     def play_shield_sound(self):
         self.soldier_sounds["shield"].play()

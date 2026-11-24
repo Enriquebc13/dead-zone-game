@@ -8,10 +8,12 @@ class LevelTransition:
     TITLE_HOLD = 1.15
     FADE_FROM_BLACK = 0.65
 
-    def __init__(self):
+    def __init__(self, sounds=None):
+        self.sounds = sounds
         self.active = False
         self.level_number = 1
         self.elapsed = 0.0
+        self.start_sound_played = False
         self.font = pygame.font.Font(None, 92)
         self.small_font = pygame.font.Font(None, 25)
 
@@ -19,6 +21,7 @@ class LevelTransition:
         """Inicia la transición mostrando el número del nivel."""
         self.level_number = level_number
         self.elapsed = 0.0
+        self.start_sound_played = False
         self.active = True
 
     def update(self, dt):
@@ -26,7 +29,19 @@ class LevelTransition:
         if not self.active:
             return False
 
+        previous_elapsed = self.elapsed
         self.elapsed += dt
+
+        # El texto del nivel aparece al terminar el primer fundido.
+        # Reproducir el sonido exactamente una vez en ese momento.
+        if (
+            not self.start_sound_played
+            and previous_elapsed < self.FADE_TO_BLACK <= self.elapsed
+        ):
+            if self.sounds is not None:
+                self.sounds.play_start_game_sound()
+            self.start_sound_played = True
+
         total = (
             self.FADE_TO_BLACK
             + self.TITLE_HOLD

@@ -31,6 +31,8 @@ LEVELS = [MAPS_DIR / f"mapa_{n}" / f"mapa_{n}.tmx" for n in range(1, 6)]
 MENU_BACKGROUND = BASE_DIR / "assets" / "images" / "backgrounds" / "menu_fondo.png"
 MENU_MUSIC = BASE_DIR / "assets" / "sounds" / "music" / "pantalla_inicio.mp3"
 MENU_SELECT_SOUND = BASE_DIR / "assets" / "sounds" / "ui" / "seleccionar_nivel.mp3"
+MENU_START_SOUND = BASE_DIR / "assets" / "sounds" / "ui" / "iniciar_partida.mp3"
+PAUSE_SELECT_SOUND = BASE_DIR / "assets" / "sounds" / "ui" / "select_btn_pause.mp3"
 
 # Musica para mapas
 LEVEL_1_MUSIC = BASE_DIR / "assets" / "sounds" / "music" / "nivel_1.mp3"

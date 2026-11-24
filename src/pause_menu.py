@@ -28,7 +28,8 @@ class PauseMenu:
         "ESC / P: pausa        F11: pantalla completa",
     )
 
-    def __init__(self):
+    def __init__(self, sounds=None):
+        self.sounds = sounds
         self.title_font = pygame.font.Font(None, 72)
         self.font = pygame.font.Font(None, 30)
         self.small_font = pygame.font.Font(None, 24)
@@ -60,6 +61,15 @@ class PauseMenu:
         )
 
         return panel, rects
+
+    def _set_selected(self, index):
+        """Actualiza la opción y reproduce el sonido solo si cambió."""
+        if index == self.selected:
+            return
+
+        self.selected = index
+        if self.sounds is not None:
+            self.sounds.play_pause_select_sound()
 
     def _activate(self, index):
         action = self.ITEMS[index][0]
@@ -108,10 +118,10 @@ class PauseMenu:
                 return "resume"
 
             if event.key in (pygame.K_UP, pygame.K_w):
-                self.selected = (self.selected - 1) % count
+                self._set_selected((self.selected - 1) % count)
 
             elif event.key in (pygame.K_DOWN, pygame.K_s):
-                self.selected = (self.selected + 1) % count
+                self._set_selected((self.selected + 1) % count)
 
             elif event.key in (
                 pygame.K_RETURN,
@@ -136,7 +146,7 @@ class PauseMenu:
 
                 if rect.collidepoint(mouse_pos):
 
-                    self.selected = i
+                    self._set_selected(i)
 
                     if (
                         event.type == pygame.MOUSEBUTTONDOWN

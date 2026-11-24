@@ -767,6 +767,21 @@ class Player:
         if slot == "axe" and previous != "axe":
             self.play_test_animation("switch_axe")
 
+    def cycle_weapon(self, direction=1):
+        """Cambia al arma desbloqueada siguiente/anterior (rueda del mouse)."""
+        weapon_order = ("rifle", "axe", "shotgun")
+        available = [weapon for weapon in weapon_order if weapon in self.unlocked]
+        if len(available) < 2:
+            return
+
+        try:
+            current_index = available.index(self.equipped)
+        except ValueError:
+            current_index = 0
+
+        next_index = (current_index + (1 if direction > 0 else -1)) % len(available)
+        self.equip(available[next_index])
+
     def unlock_weapon(self, weapon):
 
         if weapon in self.unlocked:
@@ -1063,7 +1078,7 @@ class Player:
         )
 
         run = bool(
-            (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
+            (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT] or keys[pygame.K_SPACE])
             and not backwards
         )
 
